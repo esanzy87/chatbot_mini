@@ -1,0 +1,152 @@
+.chat-page {
+  min-height: 100vh;
+  padding: 20px;
+  background: radial-gradient(circle at top right, #f5fbff, #f7f7f7 40%, #ffffff);
+  color: #172233;
+}
+
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.chat-header h1 {
+  margin: 0;
+}
+
+.session-id {
+  margin: 4px 0 0;
+  color: #4a5a70;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.context-box {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #d9e2ef;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.chat-layout {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  gap: 16px;
+}
+
+.chat-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.messages {
+  min-height: 300px;
+  max-height: 62vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 4px;
+}
+
+.message {
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid #d9e2ef;
+}
+
+.message.user {
+  border-left: 4px solid #2d6cdf;
+}
+
+.message.assistant {
+  border-left: 4px solid #0f8f63;
+}
+
+.message p {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+}
+
+.sources {
+  margin: 8px 0 0;
+  padding-left: 16px;
+}
+
+.sources li {
+  display: flex;
+  gap: 8px;
+}
+
+.status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-height: 24px;
+}
+
+.error-text {
+  color: #c83232;
+}
+
+.composer textarea {
+  width: 100%;
+  border: 1px solid #c7d4e6;
+  border-radius: 10px;
+  padding: 10px;
+  font: inherit;
+}
+
+.composer-actions {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.trace-panel {
+  border: 1px solid #d9e2ef;
+  border-radius: 12px;
+  padding: 10px;
+  background: #ffffff;
+  max-height: 72vh;
+  overflow: auto;
+}
+
+.trace-item {
+  border-top: 1px solid #edf2fa;
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+.trace-item:first-child {
+  margin-top: 0;
+  border-top: none;
+  padding-top: 0;
+}
+
+.trace-summary {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (max-width: 900px) {
+  .chat-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .header-actions {
+    flex-direction: column;
+  }
+}

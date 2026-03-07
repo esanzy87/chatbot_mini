@@ -1,0 +1,122 @@
+{
+  "generatedAt": "2026-03-07T14:02:53.715Z",
+  "mode": {
+    "llm": "stub",
+    "search": "stub"
+  },
+  "sample": {
+    "warmUpCount": 20,
+    "measuredCount": 200,
+    "totalExecuted": 220
+  },
+  "firstChunk": {
+    "p95": 11,
+    "samples": 200
+  },
+  "stability": {
+    "doneRate": 1,
+    "fallbackRate": 1,
+    "fallbackNumerator": 0,
+    "fallbackDenominator": 0,
+    "doneNumerator": 200,
+    "doneDenominator": 200
+  },
+  "fixture": {
+    "total": 200,
+    "scenarioCounts": {
+      "DIRECT_ANSWER": 80,
+      "CALL_TOOL": 80,
+      "ASK_CLARIFY": 20,
+      "REFUSE": 20
+    },
+    "lengthBucketCounts": {
+      "1_30": 60,
+      "31_200": 100,
+      "201_800": 40
+    },
+    "callToolNeedsSourcesTrue": 40,
+    "callToolNeedsSourcesFalse": 40
+  },
+  "sessionDistribution": [
+    {
+      "sessionId": "sess_01KK49QBG7KZC8TJX7NJ30Y83N",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGAKN7K88XKEAFA4N9C",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGB7ZHF8VC6G8DWA5V8",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGCE6RHNYHS1Q3JF0AJ",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGCYZ6JZH4K22NTMFW3",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGDFX5442SSZQF5EZ44",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGENQ0SV476GWP6PHQ8",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGE342F6N8HJB3QJMXD",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGFS1FS35F7NV3S247Z",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGFMV2FWFAYDCFQZSSC",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGG8CQR3EHMMVZ5JMF0",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGGH7PN4KJ7E83T3J0N",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGH9BGDC6PPEPS7PPJS",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGJBYP51YRQCCSRVNRP",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGJD6CYRX2ZEYAB9BA1",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGKMSC0P61HE0RKQAFT",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGKCDB0WC5FA7C3HZP0",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGMT944K00X5F2T7Y8Y",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGM9MNAF6KYN4F0ZR6A",
+      "count": 10
+    },
+    {
+      "sessionId": "sess_01KK49QBGNNH6D53F56PXS79HA",
+      "count": 10
+    }
+  ]
+}

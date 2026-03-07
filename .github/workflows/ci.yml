@@ -1,0 +1,55 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-stub:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
+      APP_LLM_MODE: stub
+      APP_SEARCH_MODE: stub
+      INTERNAL_TOOL_TOKEN: test-internal-token
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test
+
+  sse-contract:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
+      APP_LLM_MODE: stub
+      APP_SEARCH_MODE: stub
+      INTERNAL_TOOL_TOKEN: test-internal-token
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:sse-contract
+
+  coverage:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
+      APP_LLM_MODE: stub
+      APP_SEARCH_MODE: stub
+      INTERNAL_TOOL_TOKEN: test-internal-token
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:coverage
