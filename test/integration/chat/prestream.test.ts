@@ -185,6 +185,85 @@ describe("POST /api/chat pre-stream validations", () => {
     expect(payload.sources).toBeUndefined();
   });
 
+  it("prioritizes forced search attempt even when model confidence is low", async () => {
+    const sessionId = await createTestSession();
+    const container = getContainer();
+    const originalPlan = container.llmPort.planNextAction.bind(container.llmPort);
+
+    container.llmPort.planNextAction = async () => ({
+      nextAction: "DIRECT_ANSWER",
+      allowedTools: [],
+      confidence: 0.1,
+      reason: "낮은 신뢰도"
+    });
+
+    try {
+      const req = new Request("http://localhost/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          message: "출처 포함 최신 통계를 알려줘",
+          clientOptions: { needsSources: true }
+        })
+      });
+
+      const events = parseSseEvents(await (await chatRoute(req)).text());
+      const toolStart = events.find(
+        (event) => event.event === "tool" && (event.data as { phase?: string }).phase === "start"
+      );
+      const messagePayload = (events.find((event) => event.event === "message")?.data ??
+        {}) as { nextAction?: string; sources?: unknown[] };
+
+      expect((toolStart?.data as { toolName?: string }).toolName).toBe("search");
+      expect(messagePayload.nextAction).toBe("CALL_TOOL");
+      expect(Array.isArray(messagePayload.sources)).toBe(true);
+      expect((messagePayload.sources ?? []).length).toBeGreaterThan(0);
+    } finally {
+      container.llmPort.planNextAction = originalPlan;
+    }
+  });
+
+  it("overrides forced-source ASK_CLARIFY plan to search tool first", async () => {
+    const sessionId = await createTestSession();
+    const container = getContainer();
+    const originalPlan = container.llmPort.planNextAction.bind(container.llmPort);
+
+    container.llmPort.planNextAction = async () => ({
+      nextAction: "ASK_CLARIFY",
+      allowedTools: [],
+      clarifyQuestion: "질문을 더 구체화해 주세요.",
+      confidence: 0.2,
+      reason: "입력이 모호함"
+    });
+
+    try {
+      const req = new Request("http://localhost/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          message: "출처가 있는 최신 통계 근거를 알려줘",
+          clientOptions: { needsSources: true }
+        })
+      });
+
+      const events = parseSseEvents(await (await chatRoute(req)).text());
+      const toolStart = events.find(
+        (event) => event.event === "tool" && (event.data as { phase?: string }).phase === "start"
+      );
+      const messagePayload = (events.find((event) => event.event === "message")?.data ??
+        {}) as { nextAction?: string; sources?: unknown[] };
+
+      expect((toolStart?.data as { toolName?: string }).toolName).toBe("search");
+      expect(messagePayload.nextAction).toBe("CALL_TOOL");
+      expect(Array.isArray(messagePayload.sources)).toBe(true);
+      expect((messagePayload.sources ?? []).length).toBeGreaterThan(0);
+    } finally {
+      container.llmPort.planNextAction = originalPlan;
+    }
+  });
+
   it("omits sources when needsSources=false and normalized sources are empty", async () => {
     const sessionId = await createTestSession();
     const req = new Request("http://localhost/api/chat", {

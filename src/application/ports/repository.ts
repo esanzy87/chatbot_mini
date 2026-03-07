@@ -104,6 +104,7 @@ export type FinalizeTurnInput = {
   decisionTrace?: TurnDecisionTraceWrite;
   nextConsecutiveToolFailureTurns?: number;
   sessionUpdatedAt?: string;
+  shouldPersist?: () => boolean;
 };
 
 export interface ChatTurnRepository {

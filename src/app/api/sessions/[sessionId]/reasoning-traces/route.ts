@@ -23,7 +23,16 @@ export async function GET(
 
   const url = new URL(request.url);
   const limitRaw = url.searchParams.get("limit");
-  const cursorRaw = url.searchParams.get("cursor") ?? undefined;
+  const cursorParam = url.searchParams.get("cursor");
+  if (cursorParam !== null && cursorParam.length === 0) {
+    return jsonErrorWithRequestId({
+      code: "INVALID_CURSOR",
+      message: "cursor 형식이 올바르지 않습니다.",
+      requestId,
+      details: { cursor: cursorParam }
+    });
+  }
+  const cursorRaw = cursorParam ?? undefined;
 
   const limit = limitRaw === null ? 20 : Number(limitRaw);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
@@ -37,7 +46,7 @@ export async function GET(
 
   try {
     const container = getContainer();
-    const session = await container.sqliteRepository.getSession(sessionId);
+    const session = await container.useCases.getSession.execute({ sessionId });
     if (!session) {
       return jsonErrorWithRequestId({
         code: "SESSION_NOT_FOUND",
@@ -46,10 +55,10 @@ export async function GET(
       });
     }
 
-    const result = await container.sqliteRepository.listReasoningTraces({
+    const result = await container.useCases.getReasoningTrace.execute({
       sessionId,
       limit,
-      ...(cursorRaw ? { cursor: cursorRaw } : {})
+      ...(cursorRaw !== undefined ? { cursor: cursorRaw } : {})
     });
 
     return jsonWithRequestId(result, 200, requestId);
@@ -59,7 +68,7 @@ export async function GET(
         code: "INVALID_CURSOR",
         message: "cursor 형식이 올바르지 않습니다.",
         requestId,
-        ...(cursorRaw ? { details: { cursor: cursorRaw } } : {})
+        ...(cursorRaw !== undefined ? { details: { cursor: cursorRaw } } : {})
       });
     }
 

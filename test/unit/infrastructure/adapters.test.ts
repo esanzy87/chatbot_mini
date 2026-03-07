@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { StubLlmAdapter } from "@/infrastructure/llm/stubLlmAdapter";
 import { GeminiLlmAdapter } from "@/infrastructure/llm/geminiLlmAdapter";
 import { StubSearchAdapter } from "@/infrastructure/search/stubSearchAdapter";
+import { TavilySearchAdapter } from "@/infrastructure/search/tavilySearchAdapter";
 import { RuleTransformAdapter } from "@/infrastructure/tools/ruleTransformAdapter";
 import { withToolTimeout } from "@/infrastructure/tools/withToolTimeout";
 import { mapExternalToolError } from "@/infrastructure/tools/toolErrorMapper";
@@ -104,6 +105,23 @@ describe("search/transform adapters", () => {
   it("throws timeout fixture for recoverable timeout path", async () => {
     const adapter = new StubSearchAdapter();
     await expect(adapter.search({ query: "__TIMEOUT__", topK: 2 })).rejects.toThrowError(/TOOL_TIMEOUT/);
+  });
+
+  it("forwards abort signal when Tavily adapter is called with options", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        results: [{ title: "문서", url: "https://example.com/doc", content: "요약" }]
+      })
+    });
+
+    const adapter = new TavilySearchAdapter("key");
+    const controller = new AbortController();
+    const result = await adapter.search({ query: "langgraph", topK: 1 }, { signal: controller.signal });
+
+    expect(result.items).toHaveLength(1);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.signal).toBe(controller.signal);
   });
 
   it("applies rule-based transform for all formats", async () => {

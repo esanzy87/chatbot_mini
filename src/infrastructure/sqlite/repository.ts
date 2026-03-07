@@ -322,7 +322,15 @@ export class SqliteRepository
   }
 
   finalizeTurn(input: FinalizeTurnInput): void {
+    const assertPersistAllowed = () => {
+      if (input.shouldPersist && !input.shouldPersist()) {
+        throw new Error("REQUEST_ABORTED");
+      }
+    };
+
     withImmediateTransaction(this.db, () => {
+      assertPersistAllowed();
+
       if (input.userMessage) {
         this.db
           .prepare(
@@ -336,6 +344,7 @@ export class SqliteRepository
             input.userMessage.content,
             toDbIsoUtc(input.userMessage.createdAt)
           );
+        assertPersistAllowed();
       }
 
       if (input.aiMessage) {
@@ -351,6 +360,7 @@ export class SqliteRepository
             input.aiMessage.content,
             toDbIsoUtc(input.aiMessage.createdAt)
           );
+        assertPersistAllowed();
       }
 
       for (const tool of input.toolExecutions) {
@@ -371,6 +381,7 @@ export class SqliteRepository
             Math.max(0, Math.floor(tool.latencyMs)),
             toDbIsoUtc(tool.createdAt)
           );
+        assertPersistAllowed();
       }
 
       if (input.decisionTrace) {
@@ -388,6 +399,7 @@ export class SqliteRepository
             serializeJson(input.decisionTrace.allowedTools),
             toDbIsoUtc(input.decisionTrace.createdAt)
           );
+        assertPersistAllowed();
       }
 
       if (input.nextConsecutiveToolFailureTurns !== undefined || input.sessionUpdatedAt !== undefined) {
@@ -400,6 +412,7 @@ export class SqliteRepository
              WHERE id = ?`
           )
           .run(input.nextConsecutiveToolFailureTurns ?? null, toDbIsoUtc(updatedAt), input.sessionId);
+        assertPersistAllowed();
       }
     });
   }

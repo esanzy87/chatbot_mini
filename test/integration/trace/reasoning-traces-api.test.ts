@@ -102,6 +102,21 @@ describe("GET /api/sessions/{sessionId}/reasoning-traces", () => {
     expect(body.error.code).toBe("INVALID_CURSOR");
   });
 
+  it("returns INVALID_CURSOR for empty cursor", async () => {
+    await seedSessionAndTraces();
+
+    const res = await listTraces(
+      new Request(
+        "http://localhost/api/sessions/sess_01HW8K4X4X5N9F3D1E7Q2R6M8P/reasoning-traces?cursor="
+      ),
+      { params: Promise.resolve({ sessionId: "sess_01HW8K4X4X5N9F3D1E7Q2R6M8P" }) }
+    );
+
+    const body = (await res.json()) as { error: { code: string } };
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("INVALID_CURSOR");
+  });
+
   it("supports tie-break ordering and cursor pagination", async () => {
     await seedSessionAndTraces();
 

@@ -5,10 +5,14 @@ export type SearchResultItem = {
   url: string;
 };
 
+export type ToolCallOptions = {
+  signal?: AbortSignal;
+};
+
 export interface SearchPort {
-  search(args: { query: string; topK: number }): Promise<{ items: SearchResultItem[] }>;
+  search(args: { query: string; topK: number }, options?: ToolCallOptions): Promise<{ items: SearchResultItem[] }>;
   transform(args: {
     text: string;
     targetFormat: "summary" | "outline" | "presentation_script";
-  }): Promise<{ resultText: string; appliedRules: string[] }>;
+  }, options?: ToolCallOptions): Promise<{ resultText: string; appliedRules: string[] }>;
 }

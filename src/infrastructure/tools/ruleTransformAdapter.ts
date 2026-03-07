@@ -1,8 +1,11 @@
 export class RuleTransformAdapter {
-  async transform(args: {
-    text: string;
-    targetFormat: "summary" | "outline" | "presentation_script";
-  }): Promise<{ resultText: string; appliedRules: string[] }> {
+  async transform(
+    args: {
+      text: string;
+      targetFormat: "summary" | "outline" | "presentation_script";
+    },
+    _options?: { signal?: AbortSignal }
+  ): Promise<{ resultText: string; appliedRules: string[] }> {
     const base = args.text.trim();
 
     if (args.targetFormat === "summary") {

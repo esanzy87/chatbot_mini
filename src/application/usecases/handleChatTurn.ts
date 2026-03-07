@@ -1,6 +1,10 @@
 import type { LlmPort } from "@/application/ports/llm";
 import type { MessageRepository, SessionRepository } from "@/application/ports/repository";
-import { applyConfidenceFallback, validateRouteDecision } from "@/domain/policies/routeDecision";
+import {
+  applyConfidenceFallbackWithSourcePolicy,
+  enforceForcedSearchRouteDecision,
+  validateRouteDecision
+} from "@/domain/policies/routeDecision";
 import { decideForceSourceMode } from "@/domain/policies/sourceMode";
 import { trimAndValidateLength } from "@/core/validation/text";
 
@@ -17,7 +21,7 @@ export class HandleChatTurnUseCase {
     needsSources: boolean;
   }): Promise<{
     forceSourceMode: "FORCED" | "NOT_FORCED";
-    routeDecision: ReturnType<typeof applyConfidenceFallback>;
+    routeDecision: ReturnType<typeof applyConfidenceFallbackWithSourcePolicy>;
     sessionMasterContext: string;
     history: Array<{ role: string; content: string }>;
   }> {
@@ -43,7 +47,15 @@ export class HandleChatTurnUseCase {
     });
 
     const validated = validateRouteDecision(planned);
-    const routeDecision = applyConfidenceFallback(validated);
+    const forcedPolicyApplied = enforceForcedSearchRouteDecision({
+      routeDecision: validated,
+      forceSourceMode
+    });
+    const fallbackApplied = applyConfidenceFallbackWithSourcePolicy({
+      routeDecision: forcedPolicyApplied,
+      forceSourceMode
+    });
+    const routeDecision = validateRouteDecision(fallbackApplied);
 
     return {
       forceSourceMode,

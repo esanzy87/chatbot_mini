@@ -3,7 +3,11 @@ import { z } from "zod";
 import { createEntityId, createToolCallId } from "@/core/id/ids";
 import type { NextAction, RouteDecision, SourceItem } from "@/domain/models";
 import { decideForceSourceMode } from "@/domain/policies/sourceMode";
-import { applyConfidenceFallback, validateRouteDecision } from "@/domain/policies/routeDecision";
+import {
+  applyConfidenceFallbackWithSourcePolicy,
+  enforceForcedSearchRouteDecision,
+  validateRouteDecision
+} from "@/domain/policies/routeDecision";
 import { classifyToolFailure, nextConsecutiveToolFailureTurns, resolveToolFailureFallback } from "@/domain/policies/toolFailure";
 import { normalizeSources } from "@/domain/policies/sources";
 import { toReasonSummary } from "@/domain/policies/reasonSummaryDomain";
@@ -28,6 +32,7 @@ export type ChatGraphDeps = {
   searchPort: SearchPort;
   repository: ChatTurnRepository;
   emitToolEvent: (payload: ToolEventPayload) => void;
+  abortSignal?: AbortSignal;
   isAborted: () => boolean;
   now: () => number;
 };
@@ -122,33 +127,6 @@ const transformArgsSchema = z.object({
   targetFormat: z.enum(["summary", "outline", "presentation_script"])
 });
 
-function enforceForcedSearchRouteDecision(params: {
-  routeDecision: RouteDecision;
-  forceSourceMode: "FORCED" | "NOT_FORCED";
-}): RouteDecision {
-  const { routeDecision, forceSourceMode } = params;
-  if (forceSourceMode !== "FORCED") {
-    return routeDecision;
-  }
-
-  if (routeDecision.nextAction === "REFUSE" || routeDecision.nextAction === "ASK_CLARIFY") {
-    return routeDecision;
-  }
-
-  if (routeDecision.nextAction === "CALL_TOOL" && routeDecision.allowedTools.includes("search")) {
-    return routeDecision;
-  }
-
-  return {
-    ...routeDecision,
-    nextAction: "CALL_TOOL",
-    allowedTools: ["search"],
-    clarifyQuestion: null,
-    refuseReason: null,
-    reason: `${routeDecision.reason} | 출처 강제 정책으로 search 우선`
-  };
-}
-
 function parseSearchToolArgs(args: Record<string, unknown>): { query: string; topK: number } {
   const parsed = searchArgsSchema.safeParse(args);
   if (!parsed.success) {
@@ -210,12 +188,15 @@ function buildGraph(deps: ChatGraphDeps) {
         });
 
         const validated = validateRouteDecision(planned);
-        const fallbackApplied = applyConfidenceFallback(validated);
         const forcedPolicyApplied = enforceForcedSearchRouteDecision({
-          routeDecision: fallbackApplied,
+          routeDecision: validated,
           forceSourceMode
         });
-        const routeDecision = validateRouteDecision(forcedPolicyApplied);
+        const fallbackApplied = applyConfidenceFallbackWithSourcePolicy({
+          routeDecision: forcedPolicyApplied,
+          forceSourceMode
+        });
+        const routeDecision = validateRouteDecision(fallbackApplied);
 
         return {
           forceSourceMode,
@@ -313,7 +294,11 @@ function buildGraph(deps: ChatGraphDeps) {
       try {
         if (state.pendingTool.toolName === "search") {
           const validatedArgs = parseSearchToolArgs(state.pendingTool.args);
-          const result = await withToolTimeout(deps.searchPort.search(validatedArgs), 8000);
+          const result = await withToolTimeout(
+            (signal) => deps.searchPort.search(validatedArgs, { signal }),
+            8000,
+            deps.abortSignal
+          );
 
           const latencyMs = Math.max(0, Math.floor(deps.now() - startedAt));
           deps.emitToolEvent({
@@ -375,7 +360,11 @@ function buildGraph(deps: ChatGraphDeps) {
         }
 
         const validatedArgs = parseTransformToolArgs(state.pendingTool.args);
-        const result = await withToolTimeout(deps.searchPort.transform(validatedArgs), 8000);
+        const result = await withToolTimeout(
+          (signal) => deps.searchPort.transform(validatedArgs, { signal }),
+          8000,
+          deps.abortSignal
+        );
         const latencyMs = Math.max(0, Math.floor(deps.now() - startedAt));
         deps.emitToolEvent({
           turnId: state.turnId,
@@ -408,6 +397,10 @@ function buildGraph(deps: ChatGraphDeps) {
       } catch (error) {
         const latencyMs = Math.max(0, Math.floor(deps.now() - startedAt));
         const message = error instanceof Error ? error.message : "";
+        if (deps.isAborted() || message.includes("REQUEST_ABORTED")) {
+          throw new Error("REQUEST_ABORTED");
+        }
+
         const isTimeout = message.includes("TOOL_TIMEOUT");
         const isNodeException = message.includes("NODE_EXCEPTION");
         const isSchemaInvalid = message.includes("TOOL_SCHEMA_INVALID");
@@ -513,7 +506,8 @@ function buildGraph(deps: ChatGraphDeps) {
             latencyMs: tool.latencyMs,
             createdAt: tool.createdAt
           })),
-          sessionUpdatedAt: new Date().toISOString()
+          sessionUpdatedAt: new Date().toISOString(),
+          shouldPersist: () => !deps.isAborted()
         });
 
         return {
@@ -569,7 +563,8 @@ function buildGraph(deps: ChatGraphDeps) {
           createdAt: new Date().toISOString()
         },
         nextConsecutiveToolFailureTurns: nextCounter,
-        sessionUpdatedAt: new Date().toISOString()
+        sessionUpdatedAt: new Date().toISOString(),
+        shouldPersist: () => !deps.isAborted()
       });
 
       return {

@@ -1,16 +1,22 @@
 import { z } from "zod";
+import { ID_PATTERNS } from "@/core/id/ids";
+import { codePointLength } from "@/core/validation/text";
 
 export type SseEventName = "token" | "tool" | "message" | "error" | "done";
 
+const turnIdSchema = z.string().regex(ID_PATTERNS.turnIdRegex);
+const toolCallIdSchema = z.string().regex(ID_PATTERNS.toolCallIdRegex);
+const requestIdSchema = z.string().regex(ID_PATTERNS.requestIdRegex);
+
 const tokenSchema = z.object({
-  turnId: z.string(),
+  turnId: turnIdSchema,
   delta: z.string()
 }).strict();
 
 const toolStartSchema = z
   .object({
-    turnId: z.string(),
-    toolCallId: z.string(),
+    turnId: turnIdSchema,
+    toolCallId: toolCallIdSchema,
     phase: z.literal("start"),
     toolName: z.enum(["search", "transform"]),
     args: z.record(z.string(), z.unknown()).optional()
@@ -19,8 +25,8 @@ const toolStartSchema = z
 
 const toolSuccessSchema = z
   .object({
-    turnId: z.string(),
-    toolCallId: z.string(),
+    turnId: turnIdSchema,
+    toolCallId: toolCallIdSchema,
     phase: z.literal("success"),
     toolName: z.enum(["search", "transform"]),
     latencyMs: z.number().int().min(0)
@@ -29,8 +35,8 @@ const toolSuccessSchema = z
 
 const toolErrorSchema = z
   .object({
-    turnId: z.string(),
-    toolCallId: z.string(),
+    turnId: turnIdSchema,
+    toolCallId: toolCallIdSchema,
     phase: z.literal("error"),
     toolName: z.enum(["search", "transform"]),
     errorCode: z.string(),
@@ -40,21 +46,36 @@ const toolErrorSchema = z
 
 const sourceSchema = z
   .object({
-    title: z.string(),
-    url: z.string(),
-    source: z.string()
+    title: z.string().refine((value) => {
+      const trimmed = value.trim();
+      const len = codePointLength(trimmed);
+      return len >= 1 && len <= 120;
+    }),
+    url: z.string().refine((value) => {
+      const trimmed = value.trim();
+      try {
+        const parsed = new URL(trimmed);
+        return parsed.protocol === "http:" || parsed.protocol === "https:";
+      } catch {
+        return false;
+      }
+    }),
+    source: z.string().refine((value) => {
+      const trimmed = value.trim();
+      return trimmed.length >= 1 && trimmed.length <= 40 && /^[a-z0-9_-]+$/.test(trimmed);
+    })
   })
   .strict();
 
 const messageSchema = z
   .object({
-    turnId: z.string(),
+    turnId: turnIdSchema,
     text: z.string(),
     nextAction: z.enum(["DIRECT_ANSWER", "CALL_TOOL", "ASK_CLARIFY", "REFUSE"]),
     sources: z.array(sourceSchema).max(5).optional(),
     debug: z
       .object({
-        requestId: z.string(),
+        requestId: requestIdSchema,
         traceId: z.string().optional(),
         reasonSummary: z.string().optional()
       })
@@ -65,7 +86,7 @@ const messageSchema = z
 
 const errorSchema = z
   .object({
-    turnId: z.string(),
+    turnId: turnIdSchema,
     code: z.enum(["MODEL_PROVIDER_ERROR", "INTERNAL_SERVER_ERROR", "TOOL_EXECUTION_ERROR"]),
     message: z.string()
   })
@@ -73,7 +94,7 @@ const errorSchema = z
 
 const doneSchema = z
   .object({
-    turnId: z.string(),
+    turnId: turnIdSchema,
     ok: z.boolean(),
     latencyMs: z.number().int().min(0),
     errorCode: z.enum(["MODEL_PROVIDER_ERROR", "INTERNAL_SERVER_ERROR", "TOOL_EXECUTION_ERROR"]).optional()
@@ -106,7 +127,10 @@ export function validateSsePayload(eventName: SseEventName, payload: unknown, de
   }
 
   if (eventName === "message") {
-    messageSchema.parse(payload);
+    const parsed = messageSchema.parse(payload);
+    if (debug && !parsed.debug) {
+      throw new Error("SSE_MESSAGE_DEBUG_REQUIRED");
+    }
     return;
   }
 

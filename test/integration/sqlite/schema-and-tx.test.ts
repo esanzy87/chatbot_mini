@@ -144,6 +144,56 @@ describe("sqlite schema", () => {
     closeSqliteDatabase(db);
   });
 
+  it("rolls back finalizeTurn when shouldPersist guard blocks commit", async () => {
+    const { db } = setupDb();
+    const repo = new SqliteRepository(db);
+
+    await repo.createSession({
+      sessionId: "sess_01HW8K4X4X5N9F3D1E7Q2R6M8P",
+      masterContext: "과제 맥락",
+      masterContextSummary: "요약",
+      createdAt: "2026-03-07T10:00:00.000Z"
+    });
+
+    expect(() =>
+      repo.finalizeTurn({
+        sessionId: "sess_01HW8K4X4X5N9F3D1E7Q2R6M8P",
+        turnId: "turn_01HW8K6K8C8Q4A9R9N4V2N7Q4A",
+        userMessage: {
+          id: "01HW8K6K8C8Q4A9R9N4V2N7Q4A",
+          content: "user",
+          createdAt: "2026-03-07T10:00:01.000Z"
+        },
+        aiMessage: {
+          id: "01HW8K6K8C8Q4A9R9N4V2N7Q4B",
+          content: "assistant",
+          createdAt: "2026-03-07T10:00:01.000Z"
+        },
+        toolExecutions: [],
+        decisionTrace: {
+          id: "01HW8KAA7S9P3Y2D4Q6N1M8R5Z",
+          sessionId: "sess_01HW8K4X4X5N9F3D1E7Q2R6M8P",
+          turnId: "turn_01HW8K6K8C8Q4A9R9N4V2N7Q4A",
+          nextAction: "DIRECT_ANSWER",
+          reasonSummary: "요약",
+          allowedTools: [],
+          createdAt: "2026-03-07T10:00:01.000Z"
+        },
+        shouldPersist: () => false
+      })
+    ).toThrowError(/REQUEST_ABORTED/);
+
+    const messageCount = (db.prepare(`SELECT COUNT(*) AS c FROM messages`).get() as { c: number }).c;
+    const toolCount = (db.prepare(`SELECT COUNT(*) AS c FROM tool_executions`).get() as { c: number }).c;
+    const traceCount = (db.prepare(`SELECT COUNT(*) AS c FROM decision_traces`).get() as { c: number }).c;
+
+    expect(messageCount).toBe(0);
+    expect(toolCount).toBe(0);
+    expect(traceCount).toBe(0);
+
+    closeSqliteDatabase(db);
+  });
+
   it("stores user+tool only for done.ok=false style finalize turn", async () => {
     const { db } = setupDb();
     const repo = new SqliteRepository(db);

@@ -1,5 +1,6 @@
 import type { SearchPort } from "@/application/ports/search";
 import { z } from "zod";
+import { withToolTimeout } from "@/application/utils/withToolTimeout";
 
 export type ToolName = "search" | "transform";
 
@@ -30,15 +31,6 @@ export class RunToolUseCase {
     targetFormat: z.enum(["summary", "outline", "presentation_script"])
   });
 
-  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-    return await Promise.race<T>([
-      promise,
-      new Promise<T>((_, reject) => {
-        setTimeout(() => reject(new Error("TOOL_TIMEOUT")), timeoutMs);
-      })
-    ]);
-  }
-
   async execute(input: RunToolInput): Promise<unknown> {
     if (!input.allowedTools.includes(input.toolName)) {
       throw new Error("TOOL_NOT_ALLOWED");
@@ -50,7 +42,7 @@ export class RunToolUseCase {
         throw new Error("VALIDATION_ERROR");
       }
 
-      return await this.withTimeout(this.searchPort.search(parsed.data), input.timeoutMs);
+      return await withToolTimeout((signal) => this.searchPort.search(parsed.data, { signal }), input.timeoutMs);
     }
 
     const parsed = this.transformSchema.safeParse(input.args);
@@ -58,6 +50,6 @@ export class RunToolUseCase {
       throw new Error("VALIDATION_ERROR");
     }
 
-    return await this.withTimeout(this.searchPort.transform(parsed.data), input.timeoutMs);
+    return await withToolTimeout((signal) => this.searchPort.transform(parsed.data, { signal }), input.timeoutMs);
   }
 }

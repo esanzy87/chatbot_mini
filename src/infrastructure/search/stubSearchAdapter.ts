@@ -1,7 +1,10 @@
 import type { SearchResultItem } from "@/application/ports/search";
 
 export class StubSearchAdapter {
-  async search(args: { query: string; topK: number }): Promise<{ items: SearchResultItem[] }> {
+  async search(
+    args: { query: string; topK: number },
+    _options?: { signal?: AbortSignal }
+  ): Promise<{ items: SearchResultItem[] }> {
     if (args.query.includes("__TIMEOUT__")) {
       throw new Error("TOOL_TIMEOUT");
     }

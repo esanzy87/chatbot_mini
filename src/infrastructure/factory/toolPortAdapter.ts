@@ -4,14 +4,14 @@ export type SearchExecutor = {
   search(args: {
     query: string;
     topK: number;
-  }): Promise<{ items: Array<{ title: string; snippet: string; url: string; source: string }> }>;
+  }, options?: { signal?: AbortSignal }): Promise<{ items: Array<{ title: string; snippet: string; url: string; source: string }> }>;
 };
 
 export type TransformExecutor = {
   transform(args: {
     text: string;
     targetFormat: "summary" | "outline" | "presentation_script";
-  }): Promise<{ resultText: string; appliedRules: string[] }>;
+  }, options?: { signal?: AbortSignal }): Promise<{ resultText: string; appliedRules: string[] }>;
 };
 
 export class ToolPortAdapter implements SearchPort {
@@ -23,14 +23,14 @@ export class ToolPortAdapter implements SearchPort {
   async search(args: {
     query: string;
     topK: number;
-  }): Promise<{ items: Array<{ title: string; snippet: string; url: string; source: string }> }> {
-    return await this.searchExecutor.search(args);
+  }, options?: { signal?: AbortSignal }): Promise<{ items: Array<{ title: string; snippet: string; url: string; source: string }> }> {
+    return await this.searchExecutor.search(args, options);
   }
 
   async transform(args: {
     text: string;
     targetFormat: "summary" | "outline" | "presentation_script";
-  }): Promise<{ resultText: string; appliedRules: string[] }> {
-    return await this.transformExecutor.transform(args);
+  }, options?: { signal?: AbortSignal }): Promise<{ resultText: string; appliedRules: string[] }> {
+    return await this.transformExecutor.transform(args, options);
   }
 }

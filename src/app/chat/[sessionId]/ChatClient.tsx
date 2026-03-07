@@ -236,19 +236,29 @@ export default function ChatClient({ sessionId }: { sessionId: string }) {
   }, [debug, input, loadTraces, loading, needsSources, sessionId]);
 
   const tracePreview = useMemo(() => traceItems.slice(0, 20), [traceItems]);
+  const toolStatusIsError = toolStatus.startsWith("도구 실패");
 
   return (
     <main className="chat-page">
       <header className="chat-header">
-        <div>
+        <div className="title-wrap">
+          <p className="chat-kicker">학습코치형 인터페이스</p>
           <h1>학습 코치 챗봇</h1>
           <p className="session-id">세션: {sessionId}</p>
         </div>
         <div className="header-actions">
-          <button type="button" onClick={() => setShowContext((v) => !v)}>
-            MasterContext 요약 보기
+          <button
+            type="button"
+            className={`header-button ${showContext ? "is-active" : ""}`}
+            onClick={() => setShowContext((v) => !v)}
+          >
+            학습 맥락 요약 보기
           </button>
-          <button type="button" onClick={() => setShowTrace((v) => !v)}>
+          <button
+            type="button"
+            className={`header-button ${showTrace ? "is-active" : ""}`}
+            onClick={() => setShowTrace((v) => !v)}
+          >
             사고 과정 보기
           </button>
         </div>
@@ -256,7 +266,7 @@ export default function ChatClient({ sessionId }: { sessionId: string }) {
 
       {showContext && session ? (
         <section className="context-box">
-          <h2>MasterContext</h2>
+          <h2>학습 맥락</h2>
           <p>{session.masterContextSummary}</p>
           <details>
             <summary>원문 보기</summary>
@@ -268,9 +278,18 @@ export default function ChatClient({ sessionId }: { sessionId: string }) {
       <section className="chat-layout">
         <div className="chat-main">
           <div className="messages">
+            {messages.length === 0 ? (
+              <article className="message-empty">
+                <h2>대화를 시작해보세요</h2>
+                <p>질문을 입력하면 요약 답변 또는 도구 기반 응답을 스트리밍으로 보여줍니다.</p>
+              </article>
+            ) : null}
             {messages.map((message) => (
               <article key={message.id} className={`message ${message.role}`}>
-                <strong>{message.role === "user" ? "사용자" : "코치"}</strong>
+                <header className="message-head">
+                  <strong>{message.role === "user" ? "사용자" : "코치"}</strong>
+                  {message.nextAction ? <span className="message-action">{message.nextAction}</span> : null}
+                </header>
                 <p>{message.text}</p>
                 {message.sources && message.sources.length > 0 ? (
                   <ul className="sources">
@@ -288,10 +307,23 @@ export default function ChatClient({ sessionId }: { sessionId: string }) {
             ))}
           </div>
 
-          <div className="status-row">
-            {loading ? <span>생성 중...</span> : null}
-            {toolStatus ? <span>{toolStatus}</span> : null}
-            {errorText ? <span className="error-text">{errorText}</span> : null}
+          <div className="status-row" aria-live="polite">
+            {loading ? (
+              <span className="status-pill status-pill-loading">
+                생성 중...
+                <span className="typing-dots" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </span>
+              </span>
+            ) : null}
+            {toolStatus ? (
+              <span className={`status-pill ${toolStatusIsError ? "status-pill-error" : "status-pill-tool"}`}>
+                {toolStatus}
+              </span>
+            ) : null}
+            {errorText ? <span className="status-pill status-pill-error error-text">{errorText}</span> : null}
           </div>
 
           <div className="composer">
@@ -302,7 +334,7 @@ export default function ChatClient({ sessionId }: { sessionId: string }) {
               rows={4}
             />
             <div className="composer-actions">
-              <label>
+              <label className="toggle-field">
                 <input
                   type="checkbox"
                   checked={needsSources}
@@ -310,11 +342,16 @@ export default function ChatClient({ sessionId }: { sessionId: string }) {
                 />
                 근거 필요
               </label>
-              <label>
+              <label className="toggle-field">
                 <input type="checkbox" checked={debug} onChange={(event) => setDebug(event.target.checked)} />
                 디버그
               </label>
-              <button type="button" onClick={() => void sendMessage()} disabled={loading || input.trim().length === 0}>
+              <button
+                type="button"
+                className="send-button"
+                onClick={() => void sendMessage()}
+                disabled={loading || input.trim().length === 0}
+              >
                 전송
               </button>
             </div>
@@ -341,7 +378,7 @@ export default function ChatClient({ sessionId }: { sessionId: string }) {
             ))}
             {debug && toolEvents.length > 0 ? (
               <article className="trace-item">
-                <h3>디버그: tool 이벤트</h3>
+                <h3>디버그: 도구 이벤트</h3>
                 <pre>{JSON.stringify(toolEvents, null, 2)}</pre>
               </article>
             ) : null}

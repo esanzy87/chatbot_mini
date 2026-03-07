@@ -3,7 +3,10 @@ import type { SearchResultItem } from "@/application/ports/search";
 export class TavilySearchAdapter {
   constructor(private readonly apiKey: string) {}
 
-  async search(args: { query: string; topK: number }): Promise<{ items: SearchResultItem[] }> {
+  async search(
+    args: { query: string; topK: number },
+    options?: { signal?: AbortSignal }
+  ): Promise<{ items: SearchResultItem[] }> {
     let response: Response;
     try {
       response = await fetch("https://api.tavily.com/search", {
@@ -11,6 +14,7 @@ export class TavilySearchAdapter {
         headers: {
           "Content-Type": "application/json"
         },
+        ...(options?.signal ? { signal: options.signal } : {}),
         body: JSON.stringify({
           api_key: this.apiKey,
           query: args.query,

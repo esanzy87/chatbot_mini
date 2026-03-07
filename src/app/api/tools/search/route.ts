@@ -73,7 +73,7 @@ export async function POST(request: Request): Promise<Response> {
     });
   }
 
-  const session = await container.sqliteRepository.getSession(sessionId);
+  const session = await container.useCases.getSession.execute({ sessionId });
   if (!session) {
     return jsonErrorWithRequestId({
       code: "SESSION_NOT_FOUND",

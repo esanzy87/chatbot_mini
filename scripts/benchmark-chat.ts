@@ -28,11 +28,14 @@ function parseSseEvents(raw: string): SseEvent[] {
     });
 }
 
-async function readResponseStreamWithFirstChunk(res: Response): Promise<{
+async function readResponseStreamWithFirstChunk(
+  res: Response,
+  requestStartedAtMs: number
+): Promise<{
   raw: string;
   firstChunkMs: number;
 }> {
-  const t0 = Date.now();
+  const t0 = requestStartedAtMs;
   if (!res.body) {
     return { raw: "", firstChunkMs: 0 };
   }
@@ -120,10 +123,11 @@ async function run(): Promise<void> {
       })
     });
 
+    const requestStartedAtMs = Date.now();
     const res = await chatRoute(req);
     const contentType = res.headers.get("content-type") ?? "";
     const inStream = res.status === 200 && contentType.includes("text/event-stream");
-    const { raw, firstChunkMs } = await readResponseStreamWithFirstChunk(res);
+    const { raw, firstChunkMs } = await readResponseStreamWithFirstChunk(res, requestStartedAtMs);
     const events = parseSseEvents(raw);
     const done = events.find((event) => event.event === "done");
     const doneOk = Boolean(done?.data?.ok);

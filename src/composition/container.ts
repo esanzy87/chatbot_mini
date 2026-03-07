@@ -3,7 +3,13 @@ import { loadAppConfig } from "@/config/env";
 import type { AppConfig } from "@/config/env";
 import type { LlmPort } from "@/application/ports/llm";
 import type { SearchPort } from "@/application/ports/search";
+import type {
+  ChatTurnRepository,
+  SessionRepository,
+  TraceRepository
+} from "@/application/ports/repository";
 import { CreateSessionUseCase } from "@/application/usecases/createSession";
+import { GetSessionUseCase } from "@/application/usecases/getSession";
 import { HandleChatTurnUseCase } from "@/application/usecases/handleChatTurn";
 import { RunToolUseCase } from "@/application/usecases/runTool";
 import { GetReasoningTraceUseCase } from "@/application/usecases/getReasoningTrace";
@@ -16,9 +22,13 @@ export type AppContainer = {
   config: AppConfig;
   llmPort: LlmPort;
   searchPort: SearchPort;
+  sessionRepository: SessionRepository;
+  traceRepository: TraceRepository;
+  chatTurnRepository: ChatTurnRepository;
   sqliteRepository: SqliteRepository;
   useCases: {
     createSession: CreateSessionUseCase;
+    getSession: GetSessionUseCase;
     handleChatTurn: HandleChatTurnUseCase;
     runTool: RunToolUseCase;
     getReasoningTrace: GetReasoningTraceUseCase;
@@ -48,9 +58,13 @@ export function createContainer(): AppContainer {
     config,
     llmPort,
     searchPort,
+    sessionRepository: sqliteRepository,
+    traceRepository: sqliteRepository,
+    chatTurnRepository: sqliteRepository,
     sqliteRepository,
     useCases: {
       createSession: new CreateSessionUseCase(sqliteRepository),
+      getSession: new GetSessionUseCase(sqliteRepository),
       handleChatTurn: new HandleChatTurnUseCase(llmPort, sqliteRepository, sqliteRepository),
       runTool: new RunToolUseCase(searchPort),
       getReasoningTrace: new GetReasoningTraceUseCase(sqliteRepository)

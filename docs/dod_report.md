@@ -1,11 +1,11 @@
 # 최종 DoD 검증 리포트
 
 ## 상태 요약
-- 검증 기준 문서: `docs/initial_spec.md` v0.30
-- 검증 일시: 2026-03-07
+- 검증 기준 문서: `docs/initial_spec.md` v0.33
+- 검증 일시: 2026-03-08
 - 기본 모드(stub): 완료
 - live 모드(실키): API 키 미제공 환경에서는 smoke test skip
-- 회귀 테스트 최신 결과: `141 passed`, `2 skipped`
+- 회귀 테스트 최신 결과: `150 passed`, `2 skipped`
 
 ## 항목별 결과
 

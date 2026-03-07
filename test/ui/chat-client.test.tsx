@@ -117,7 +117,7 @@ describe("UI /chat/[sessionId]", () => {
 
     expect(await screen.findByText("학습 코치 챗봇")).toBeInTheDocument();
     expect(screen.getByText(`세션: ${SESSION_ID}`)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "MasterContext 요약 보기" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "학습 맥락 요약 보기" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "사고 과정 보기" })).toBeInTheDocument();
     expect(screen.getByLabelText("근거 필요")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("질문을 입력하세요")).toBeInTheDocument();
@@ -284,13 +284,13 @@ describe("UI /chat/[sessionId]", () => {
     fireEvent.change(input, { target: { value: "첫 번째" } });
     fireEvent.click(screen.getByRole("button", { name: "전송" }));
     await screen.findByText("응답1");
-    expect(screen.queryByText("디버그: tool 이벤트")).not.toBeInTheDocument();
+    expect(screen.queryByText("디버그: 도구 이벤트")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("디버그"));
     fireEvent.change(input, { target: { value: "두 번째" } });
     fireEvent.click(screen.getByRole("button", { name: "전송" }));
     await screen.findByText("응답2");
-    expect(screen.getByText("디버그: tool 이벤트")).toBeInTheDocument();
+    expect(screen.getByText("디버그: 도구 이벤트")).toBeInTheDocument();
   });
 
   it("shows and clears streaming/tool status messages", async () => {

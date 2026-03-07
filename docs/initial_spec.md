@@ -1,4 +1,4 @@
-# chatbot_mini 초기 구현 스펙 (Scratch MVP v0.30)
+# chatbot_mini 초기 구현 스펙 (Scratch MVP v0.33)
 
 ## 1. 문서 목적
 - `docs/prd.md`를 기반으로, 스크래치에서 시작해 "실행 가능한 최소 완성 코드"를 만들기 위한 최초 구현 스펙을 정의한다.
@@ -35,6 +35,7 @@
   - 단일 Node.js 인스턴스, `SESSION_BUSY` 회피를 위해 동시성 1로 측정
   - 측정 대상 요청은 정상 in-stream 요청(`sessionId` 유효, pre-stream 에러/연결 종료 제외)
   - 측정 구간은 `2.1` 정의(`t0 -> t_first`)를 그대로 사용
+  - in-process benchmark 스크립트에서는 구현 제약상 `t0`를 `chatRoute` 호출 직전 시점으로 근사 측정한다.
 - 샘플 수:
   - 모드별(`stub`, `live`) 총 220요청 수행
   - 처음 20요청은 warm-up으로 제외, 이후 200요청으로 p95 산출
@@ -114,7 +115,7 @@
 - `refuse`
 - `callModelWithTools`
   - 역할: `allowedTools`/요청 문맥을 입력으로 이번 루프에서 실행할 단일 도구와 인자를 서버에서 결정
-  - 주의: MVP v0.30은 모델 raw `tool_calls`를 직접 파싱/재호출하지 않으며, 해당 패턴은 후속 버전 확장 항목으로 둔다.
+  - 주의: MVP v0.33은 모델 raw `tool_calls`를 직접 파싱/재호출하지 않으며, 해당 패턴은 후속 버전 확장 항목으로 둔다.
 - `toolNode`
 - `finalize`
 
@@ -138,13 +139,14 @@
 - `domain`
   - 엔티티/값객체/정책(`RouteDecision`, 가드레일 규칙, refusal 정책)
 - `application`
-  - 유스케이스(`CreateSession`, `HandleChatTurn`, `RunTool`, `GetReasoningTrace`)
+  - 유스케이스(`CreateSession`, `GetSession`, `HandleChatTurn`, `RunTool`, `GetReasoningTrace`)
   - 포트 인터페이스(`LlmPort`, `SearchPort`, `SessionRepository`, `MessageRepository`, `TraceRepository`)
 - `infrastructure`
   - 어댑터(`GeminiLlmAdapter`, `TavilySearchAdapter`, `SqliteRepository`, `StubLlmAdapter`, `StubSearchAdapter`)
 - `presentation`
   - Next.js Route Handler, UI 컴포넌트, SSE 이벤트 처리
 - 의존성 방향: `presentation -> application -> domain` / `infrastructure -> application(port)` 역방향 주입.
+- Route Handler는 인프라 구현체(`SqliteRepository` 등)에 직접 접근하지 않고, application 유스케이스/포트 경계로만 접근한다.
 - composition root:
   - 의존성 조립 전용 `composition` 계층(또는 동등한 루트)은 infra 구현체를 생성하고 application 포트에 주입할 수 있다.
   - `domain`/`application` 비즈니스 코드(유스케이스/정책)는 infra 구체 구현체 import를 금지한다.
@@ -251,6 +253,7 @@ type ReasoningTrace = {
   - `refuseReason` 필수(1~200자)
 - `confidence` 정책
   - `confidence < 0.55`면 서버 후처리에서 `ASK_CLARIFY` 강제
+  - 예외: `forceSourceMode=FORCED`이고 서버 강제 정책으로 `CALL_TOOL(search)`가 확정된 경우, 첫 검색 시도 보장을 위해 confidence fallback을 적용하지 않는다.
 
 ### 6.7 `needsSources` 동작 규칙
 - 입력: `POST /api/chat.clientOptions.needsSources` (기본 `false`)
@@ -265,6 +268,10 @@ type ReasoningTrace = {
     - 정책상 거절(`REFUSE`)
     - 개인 의견/창작 요청
   - 강제 대상 요청:
+    - 라우팅 후처리 우선순위:
+      - `CALL_TOOL(search)` 강제 정책을 confidence fallback보다 먼저 적용한다.
+      - 강제 정책으로 확정된 `CALL_TOOL(search)`는 low-confidence라 하더라도 첫 도구 시도 전 `ASK_CLARIFY`로 대체하지 않는다.
+      - `REFUSE`를 제외한 라우팅 결과(`DIRECT_ANSWER`, `ASK_CLARIFY`, `CALL_TOOL(transform)` 등)는 강제 정책 단계에서 `CALL_TOOL(search)`로 승격한다.
     - 최종 `event: message` payload에 `sources` 배열 필수
     - 유효 출처가 없으면 "출처 부족"을 명시하고 `ASK_CLARIFY`로 종료
     - 유효 출처 기준은 `7.3.1 sources 아이템 스키마`를 따른다.
@@ -411,6 +418,7 @@ type ReasoningTrace = {
   - in-flight 해제 시점: `event: done` 전송 완료, 스트림 예외 종료, 클라이언트 연결 종료 중 먼저 발생한 시점
   - 클라이언트 연결 종료 처리:
     - 서버는 `AbortController` 신호를 그래프/도구 실행에 전파해 중단을 시도한다.
+    - 도구 어댑터(`SearchPort.search/transform`) 호출에도 동일 abort 신호를 전달한다.
     - abort 감지 이후 추가 `tool`/`message` 이벤트 생성은 금지한다.
     - transport 종료로 `done` 전송이 불가능한 경우에도 in-flight 상태는 반드시 해제한다.
   - 에러 전송 규칙:
@@ -655,11 +663,12 @@ x-internal-tool-token: <INTERNAL_TOOL_TOKEN>
   - `createdAt DESC, turnId DESC`
 - `items[].toolExecutions` 정렬 규칙(고정)
   - 각 아이템 내부 `toolExecutions` 배열은 `tool_executions.created_at ASC, tool_call_id ASC` 순서로 직렬화한다.
-- 페이지네이션 규칙
+  - 페이지네이션 규칙
   - 더 이상 다음 페이지가 없으면 `nextCursor: null`
   - 결과가 0건이면 항상 `{ "nextCursor": null, "items": [] }`를 반환한다.
   - `limit`가 정수가 아니거나 범위(1~100)를 벗어나면 `422` + `error.code: VALIDATION_ERROR`
   - 잘못된 `cursor` 형식/복호화 실패 시 `400` + `error.code: INVALID_CURSOR`
+  - `cursor`가 빈 문자열(`?cursor=`)이면 `400` + `error.code: INVALID_CURSOR`
   - `cursor`는 base64url 문자셋(`A-Z a-z 0-9 - _`)만 허용하며 `=` padding은 허용하지 않는다.
   - `cursor` JSON 스키마(고정): `{ "v": 1, "createdAt": "<ISO8601 UTC>", "turnId": "<turnId>" }`
     - `v`가 없거나 `1`이 아니면 `400` + `INVALID_CURSOR`
@@ -842,7 +851,7 @@ x-internal-tool-token: <INTERNAL_TOOL_TOKEN>
 - 경로: `/chat/[sessionId]`
 - 기본 언어: 한국어(레이블/버튼/시스템 메시지 포함).
 - 영역:
-  - 상단: 세션 ID, `MasterContext` 요약 토글.
+  - 상단: 세션 ID, `학습 맥락` 요약 토글.
   - 우측 패널: `사고 과정 보기` 토글 및 턴별 트레이스 리스트.
   - 본문: 메시지 리스트.
   - 하단: 입력창, 전송 버튼, `근거 필요` 체크박스.
@@ -1000,6 +1009,10 @@ x-internal-tool-token: <INTERNAL_TOOL_TOKEN>
 - 롤백 규칙:
   - 위 트랜잭션 내 어느 단계에서라도 실패하면 전체 변경을 롤백한다(부분 반영 금지).
   - 롤백된 턴은 `10.1.2 직렬화/DB 쓰기 실패 전파 규칙`을 따른다.
+- abort write-guard 규칙(고정):
+  - `finalize`는 DB write-set 반영 전에 abort 신호를 재검사한다.
+  - 트랜잭션 write 중에도 단계별 재검사를 수행하고 abort 감지 시 `REQUEST_ABORTED`로 롤백한다.
+  - abort로 롤백된 턴은 `messages/tool_executions/decision_traces`를 저장하지 않는다.
 - 동시성:
   - 같은 `sessionId`에 대한 갱신은 `BEGIN IMMEDIATE` 트랜잭션으로 직렬화한다.
 - 전송 순서 연계 규칙:

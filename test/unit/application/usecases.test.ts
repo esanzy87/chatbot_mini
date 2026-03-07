@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { CreateSessionUseCase } from "@/application/usecases/createSession";
+import { GetSessionUseCase } from "@/application/usecases/getSession";
 import { HandleChatTurnUseCase } from "@/application/usecases/handleChatTurn";
 import { RunToolUseCase } from "@/application/usecases/runTool";
 import { GetReasoningTraceUseCase } from "@/application/usecases/getReasoningTrace";
@@ -19,6 +20,28 @@ describe("CreateSessionUseCase", () => {
     expect(out.sessionId.startsWith("sess_")).toBe(true);
     expect(out.masterContextSummary.length).toBeGreaterThan(0);
     expect(sessionRepository.createSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("GetSessionUseCase", () => {
+  it("delegates session lookup to repository", async () => {
+    const sessionRepository = {
+      getSession: vi.fn(async () => ({
+        sessionId: "sess_01HW8K4X4X5N9F3D1E7Q2R6M8P",
+        masterContext: "master",
+        masterContextSummary: "summary",
+        createdAt: "2026-03-07T10:00:00.000Z",
+        consecutiveToolFailureTurns: 0
+      }))
+    };
+
+    const useCase = new GetSessionUseCase(sessionRepository as never);
+    const out = await useCase.execute({
+      sessionId: "sess_01HW8K4X4X5N9F3D1E7Q2R6M8P"
+    });
+
+    expect(out?.sessionId).toBe("sess_01HW8K4X4X5N9F3D1E7Q2R6M8P");
+    expect(sessionRepository.getSession).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -57,6 +80,43 @@ describe("HandleChatTurnUseCase", () => {
     expect(out.forceSourceMode).toBe("FORCED");
     expect(out.routeDecision.nextAction).toBe("CALL_TOOL");
   });
+
+  it("overrides forced-source ASK_CLARIFY decision to CALL_TOOL(search)", async () => {
+    const llmPort = {
+      planNextAction: vi.fn(async () => ({
+        nextAction: "ASK_CLARIFY",
+        allowedTools: [],
+        clarifyQuestion: "질문을 더 구체화해 주세요.",
+        confidence: 0.2,
+        reason: "입력이 모호함"
+      }))
+    };
+
+    const sessionRepository = {
+      getSession: vi.fn(async () => ({
+        sessionId: "sess_01HW8K4X4X5N9F3D1E7Q2R6M8P",
+        masterContext: "master",
+        masterContextSummary: "summary",
+        createdAt: "2026-03-07T10:00:00.000Z",
+        consecutiveToolFailureTurns: 0
+      }))
+    };
+
+    const messageRepository = {
+      listMessages: vi.fn(async () => [])
+    };
+
+    const useCase = new HandleChatTurnUseCase(llmPort as never, sessionRepository as never, messageRepository as never);
+    const out = await useCase.execute({
+      sessionId: "sess_01HW8K4X4X5N9F3D1E7Q2R6M8P",
+      message: "출처를 포함한 최신 통계 근거를 알려줘",
+      needsSources: true
+    });
+
+    expect(out.forceSourceMode).toBe("FORCED");
+    expect(out.routeDecision.nextAction).toBe("CALL_TOOL");
+    expect(out.routeDecision.allowedTools).toEqual(["search"]);
+  });
 });
 
 describe("RunToolUseCase", () => {
@@ -79,6 +139,10 @@ describe("RunToolUseCase", () => {
 
     expect(out).toEqual({ items: [] });
     expect(searchPort.search).toHaveBeenCalledTimes(1);
+    const options = ((searchPort.search.mock.calls[0] as unknown[] | undefined)?.[1] as
+      | { signal?: AbortSignal }
+      | undefined) ?? undefined;
+    expect(options?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("executes transform when allowed", async () => {

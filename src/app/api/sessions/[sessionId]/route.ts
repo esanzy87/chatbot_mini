@@ -22,7 +22,7 @@ export async function GET(
   }
 
   const container = getContainer();
-  const session = await container.sqliteRepository.getSession(sessionId);
+  const session = await container.useCases.getSession.execute({ sessionId });
 
   if (!session) {
     return jsonErrorWithRequestId({

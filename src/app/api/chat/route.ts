@@ -125,7 +125,7 @@ export async function POST(request: Request): Promise<Response> {
   const debug = (clientOptions.debug as boolean | undefined) ?? false;
 
   const container = getContainer();
-  const session = await container.sqliteRepository.getSession(sessionIdRaw);
+  const session = await container.useCases.getSession.execute({ sessionId: sessionIdRaw });
   if (!session) {
     return jsonErrorWithRequestId({
       code: "SESSION_NOT_FOUND",
@@ -186,7 +186,8 @@ export async function POST(request: Request): Promise<Response> {
             {
               llmPort: container.llmPort,
               searchPort: container.searchPort,
-              repository: container.sqliteRepository,
+              repository: container.chatTurnRepository,
+              abortSignal: request.signal,
               isAborted: () => request.signal.aborted,
               now: () => Date.now(),
               emitToolEvent: (payload) => {

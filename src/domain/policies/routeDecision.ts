@@ -1,4 +1,4 @@
-import type { AllowedTool, RouteDecision } from "@/domain/models";
+import type { AllowedTool, ForceSourceMode, RouteDecision } from "@/domain/models";
 
 const ALLOWED_TOOLS: AllowedTool[] = ["search", "transform"];
 
@@ -52,4 +52,48 @@ export function applyConfidenceFallback(input: RouteDecision): RouteDecision {
     confidence: input.confidence,
     reason: input.reason
   };
+}
+
+export function enforceForcedSearchRouteDecision(params: {
+  routeDecision: RouteDecision;
+  forceSourceMode: ForceSourceMode;
+}): RouteDecision {
+  const { routeDecision, forceSourceMode } = params;
+  if (forceSourceMode !== "FORCED") {
+    return routeDecision;
+  }
+
+  if (routeDecision.nextAction === "REFUSE") {
+    return routeDecision;
+  }
+
+  if (routeDecision.nextAction === "CALL_TOOL" && routeDecision.allowedTools.includes("search")) {
+    return routeDecision;
+  }
+
+  return {
+    ...routeDecision,
+    nextAction: "CALL_TOOL",
+    allowedTools: ["search"],
+    clarifyQuestion: null,
+    refuseReason: null,
+    reason: `${routeDecision.reason} | 출처 강제 정책으로 search 우선`
+  };
+}
+
+export function applyConfidenceFallbackWithSourcePolicy(params: {
+  routeDecision: RouteDecision;
+  forceSourceMode: ForceSourceMode;
+}): RouteDecision {
+  const { routeDecision, forceSourceMode } = params;
+
+  if (
+    forceSourceMode === "FORCED" &&
+    routeDecision.nextAction === "CALL_TOOL" &&
+    routeDecision.allowedTools.includes("search")
+  ) {
+    return routeDecision;
+  }
+
+  return applyConfidenceFallback(routeDecision);
 }
