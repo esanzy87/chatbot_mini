@@ -143,6 +143,31 @@ export class SqliteRepository
       .run(params.consecutiveToolFailureTurns, toDbIsoUtc(params.updatedAt), params.sessionId);
   }
 
+  async updateMasterContext(params: {
+    sessionId: string;
+    masterContext: string;
+    masterContextSummary: string;
+    updatedAt: string;
+  }): Promise<void> {
+    withImmediateTransaction(this.db, () => {
+      this.db
+        .prepare(
+          `UPDATE master_contexts
+           SET content = ?, summary = ?
+           WHERE session_id = ?`
+        )
+        .run(params.masterContext, params.masterContextSummary, params.sessionId);
+
+      this.db
+        .prepare(
+          `UPDATE sessions
+           SET updated_at = ?
+           WHERE id = ?`
+        )
+        .run(toDbIsoUtc(params.updatedAt), params.sessionId);
+    });
+  }
+
   async listMessages(sessionId: string): Promise<Array<{ role: string; content: string }>> {
     const rows = this.db
       .prepare(`SELECT role, content FROM messages WHERE session_id = ? ORDER BY created_at ASC`)
@@ -402,7 +427,22 @@ export class SqliteRepository
         assertPersistAllowed();
       }
 
-      if (input.nextConsecutiveToolFailureTurns !== undefined || input.sessionUpdatedAt !== undefined) {
+      if (input.masterContextUpdate) {
+        this.db
+          .prepare(
+            `UPDATE master_contexts
+             SET content = ?, summary = ?
+             WHERE session_id = ?`
+          )
+          .run(input.masterContextUpdate.content, input.masterContextUpdate.summary, input.sessionId);
+        assertPersistAllowed();
+      }
+
+      if (
+        input.nextConsecutiveToolFailureTurns !== undefined ||
+        input.sessionUpdatedAt !== undefined ||
+        input.masterContextUpdate
+      ) {
         const updatedAt = input.sessionUpdatedAt ?? new Date().toISOString();
         this.db
           .prepare(

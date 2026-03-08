@@ -41,6 +41,8 @@
   "createdAt": "2026-03-07T10:00:00.000Z"
 }
 ```
+- 동작 메모:
+  - 진로상담 대화에서 누적된 숨은 맥락이 서버에 의해 `masterContext`로 승격되면, 이후 조회 응답의 `masterContext`에도 반영된다.
 
 ## `POST /api/tools/search` (내부 전용)
 - 헤더: `x-internal-tool-token`
@@ -110,7 +112,7 @@ event: token
 data: {"turnId":"turn_01...","delta":"부분 텍스트"}
 
 event: message
-data: {"turnId":"turn_01...","text":"최종 응답","nextAction":"DIRECT_ANSWER"}
+data: {"turnId":"turn_01...","text":"좋아, 이건 이렇게 보면 돼! 먼저 핵심부터 같이 정리해보자 ✨","nextAction":"DIRECT_ANSWER"}
 
 event: done
 data: {"turnId":"turn_01...","ok":true,"latencyMs":120}
@@ -126,7 +128,7 @@ data: {"turnId":"turn_01...","ok":true,"latencyMs":120}
     {
       "turnId": "turn_01...",
       "nextAction": "CALL_TOOL",
-      "reasonSummary": "출처 요청이 있어 검색 도구를 사용",
+      "reasonSummary": "출처 확인이 필요해 검색 도구를 사용",
       "allowedTools": ["search"],
       "toolExecutions": [
         {

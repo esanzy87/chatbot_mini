@@ -37,8 +37,8 @@ APP_LLM_MODE=live APP_SEARCH_MODE=live GEMINI_API_KEY=... TAVILY_API_KEY=... INT
 - 실행:
   - `npm run benchmark:stub`
 - 결과 파일:
-  - `docs/perf_report_stub.md`
-  - `docs/perf_report_stub.json`
+  - `docs/features/0_bootstrap/perf_report_stub.md`
+  - `docs/features/0_bootstrap/perf_report_stub.json`
 
 ## 5. 알려진 제한 사항
 - `SESSION_BUSY` 락은 단일 Node 프로세스 범위에서만 보장됨

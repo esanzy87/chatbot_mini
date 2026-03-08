@@ -1,10 +1,10 @@
-# chatbot_mini 구현 TODO v0 (기준: `docs/initial_spec.md` v0.33)
+# chatbot_mini 구현 TODO v0 (기준: `docs/features/0_bootstrap/initial_spec.md` v0.34)
 
 ## 0. 작업 운영 규칙
 - [x] `OPS-001` 모든 기능 구현은 RED 테스트를 먼저 작성한 뒤 GREEN 구현으로 진행한다. | DoD: PR/커밋 단위로 실패 테스트가 선행되었음을 테스트 파일 히스토리로 확인 가능.
 - [x] `OPS-002` 각 기능 완료 후 REFACTOR 단계에서 중복 제거와 포트/어댑터 경계를 재점검한다. | DoD: 리팩터 후 기존 테스트 전부 통과.
 - [x] `OPS-003` 체크리스트 항목 상태 규칙(`todo -> doing -> done`)을 문서/이슈 트래킹 도구에 일관 적용한다. | DoD: 완료 항목마다 관련 커밋 또는 테스트 증빙 링크 존재.
-- [x] `OPS-004` 구현 중 스펙 변경 필요사항은 즉시 `docs/initial_spec.md`에 반영 후 TODO 갱신한다. | DoD: 변경점마다 스펙 버전/변경 이력 동기화.
+- [x] `OPS-004` 구현 중 스펙 변경 필요사항은 즉시 `docs/features/0_bootstrap/initial_spec.md`에 반영 후 TODO 갱신한다. | DoD: 변경점마다 스펙 버전/변경 이력 동기화.
 
 ## 1. 프로젝트 부트스트랩
 - [x] `BOOT-001` Next.js(App Router)+TypeScript 프로젝트 기본 구조를 준비한다. | DoD: `pnpm dev`로 기본 앱 실행 가능.

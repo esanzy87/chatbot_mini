@@ -24,5 +24,5 @@
 
 ## 성능 측정 산출물
 - stub 벤치마크 결과:
-  - [perf_report_stub.md](/home/dev/projects/chatbot_mini/docs/perf_report_stub.md)
-  - [perf_report_stub.json](/home/dev/projects/chatbot_mini/docs/perf_report_stub.json)
+  - [perf_report_stub.md](/home/ubuntu/projects/chatbot_mini/docs/features/0_bootstrap/perf_report_stub.md)
+  - [perf_report_stub.json](/home/ubuntu/projects/chatbot_mini/docs/features/0_bootstrap/perf_report_stub.json)

@@ -1,7 +1,7 @@
 # 최종 DoD 검증 리포트
 
 ## 상태 요약
-- 검증 기준 문서: `docs/initial_spec.md` v0.33
+- 검증 기준 문서: `docs/features/0_bootstrap/initial_spec.md` v0.34
 - 검증 일시: 2026-03-08
 - 기본 모드(stub): 완료
 - live 모드(실키): API 키 미제공 환경에서는 smoke test skip
@@ -35,12 +35,12 @@
 
 7. DOD-007 성능 목표 기록(stub/live p95)
 - 상태: 부분 완료
-- stub: 완료 (`p95=11ms`) -> [perf_report_stub.md](/home/dev/projects/chatbot_mini/docs/perf_report_stub.md)
+- stub: 완료 (`p95=11ms`) -> [perf_report_stub.md](/home/ubuntu/projects/chatbot_mini/docs/features/0_bootstrap/perf_report_stub.md)
 - live: 보류 (키 미제공으로 미측정)
 
 8. DOD-008 SSE done 정상 종료율 99%+
 - 상태: 완료 (stub 벤치마크 100%)
-- 근거: [perf_report_stub.json](/home/dev/projects/chatbot_mini/docs/perf_report_stub.json)
+- 근거: [perf_report_stub.json](/home/ubuntu/projects/chatbot_mini/docs/features/0_bootstrap/perf_report_stub.json)
 
 9. DOD-009 라우팅 품질 샘플셋 50문장
 - 상태: 완료
@@ -49,6 +49,6 @@
 10. DOD-010 최종 릴리스 체크리스트
 - 상태: 완료(기본 stub 릴리스 기준)
 - 근거:
-  - 테스트/커버리지: [test_report.md](/home/dev/projects/chatbot_mini/docs/test_report.md)
-  - API/DB 문서: [api_contract.md](/home/dev/projects/chatbot_mini/docs/api_contract.md), [db_schema.md](/home/dev/projects/chatbot_mini/docs/db_schema.md)
-  - 운영 가이드: [runbook.md](/home/dev/projects/chatbot_mini/docs/runbook.md)
+  - 테스트/커버리지: [test_report.md](/home/ubuntu/projects/chatbot_mini/docs/features/0_bootstrap/test_report.md)
+  - API/DB 문서: [api_contract.md](/home/ubuntu/projects/chatbot_mini/docs/features/0_bootstrap/api_contract.md), [db_schema.md](/home/ubuntu/projects/chatbot_mini/docs/features/0_bootstrap/db_schema.md)
+  - 운영 가이드: [runbook.md](/home/ubuntu/projects/chatbot_mini/docs/runbook.md)

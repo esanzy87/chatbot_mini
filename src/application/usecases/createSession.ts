@@ -2,15 +2,7 @@ import { createSessionId } from "@/core/id/ids";
 import { nowUtcIso } from "@/core/time/time";
 import { codePointLength, trimAndValidateLength } from "@/core/validation/text";
 import type { SessionRepository } from "@/application/ports/repository";
-
-function summarizeMasterContext(masterContext: string): string {
-  const trimmed = masterContext.trim();
-  if (trimmed.length === 0) {
-    return "";
-  }
-
-  return [...trimmed].slice(0, 120).join("");
-}
+import { summarizeMasterContext } from "@/application/utils/masterContext";
 
 export class CreateSessionUseCase {
   constructor(private readonly sessionRepository: SessionRepository) {}

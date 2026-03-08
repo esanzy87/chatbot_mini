@@ -21,6 +21,12 @@ export interface SessionRepository {
     consecutiveToolFailureTurns: number;
     updatedAt: string;
   }): Promise<void>;
+  updateMasterContext(params: {
+    sessionId: string;
+    masterContext: string;
+    masterContextSummary: string;
+    updatedAt: string;
+  }): Promise<void>;
 }
 
 export interface MessageRepository {
@@ -104,6 +110,10 @@ export type FinalizeTurnInput = {
   decisionTrace?: TurnDecisionTraceWrite;
   nextConsecutiveToolFailureTurns?: number;
   sessionUpdatedAt?: string;
+  masterContextUpdate?: {
+    content: string;
+    summary: string;
+  };
   shouldPersist?: () => boolean;
 };
 

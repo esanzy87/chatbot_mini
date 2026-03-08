@@ -1,4 +1,4 @@
-import type { RouteDecision } from "@/domain/models";
+import type { NextAction, RouteDecision } from "@/domain/models";
 
 export type PlanNextActionInput = {
   sessionId: string;
@@ -15,4 +15,11 @@ export interface LlmPort {
     masterContext: string;
     history: Array<{ role: string; content: string }>;
   }): Promise<string>;
+  suggestMasterContextUpdate(input: {
+    masterContext: string;
+    history: Array<{ role: string; content: string }>;
+    message: string;
+    assistantReply: string;
+    finalNextAction: NextAction;
+  }): Promise<string | null>;
 }

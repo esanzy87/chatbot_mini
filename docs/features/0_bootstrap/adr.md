@@ -57,7 +57,7 @@
   - 추후 확장 시 model-native tool call 루프를 별도 ADR로 도입한다.
 - 코드 근거:
   - `src/application/graph/chatGraph.ts` (`chooseTool`, `callModelWithTools`, `toolNode`)
-  - `docs/initial_spec.md` v0.33
+  - `docs/features/0_bootstrap/initial_spec.md` v0.34
 
 ## ADR-005: 내부 툴 API 실행 경계
 - 날짜: 2026-03-07
@@ -73,7 +73,7 @@
   - `src/application/graph/chatGraph.ts` (포트 직접 호출)
   - `src/app/api/tools/search/route.ts`
   - `src/app/api/tools/transform/route.ts`
-  - `docs/initial_spec.md` v0.33
+  - `docs/features/0_bootstrap/initial_spec.md` v0.34
 
 ## ADR-006: Composition Root 위치 조정
 - 날짜: 2026-03-07
@@ -103,7 +103,7 @@
 - 코드 근거:
   - `src/application/graph/chatGraph.ts`
   - `src/app/api/chat/route.ts`
-  - `docs/initial_spec.md` v0.33
+  - `docs/features/0_bootstrap/initial_spec.md` v0.34
 
 ## ADR-008: Presentation 계층 접근 경계 정렬
 - 날짜: 2026-03-08
@@ -126,7 +126,7 @@
   - `src/app/api/tools/search/route.ts`
   - `src/app/api/tools/transform/route.ts`
   - `src/app/api/health/route.ts`
-  - `docs/initial_spec.md` v0.33
+  - `docs/features/0_bootstrap/initial_spec.md` v0.34
 
 ## ADR-009: 강제 출처 우선순위 + Abort 전파 정렬
 - 날짜: 2026-03-08
@@ -149,7 +149,7 @@
   - `src/infrastructure/search/tavilySearchAdapter.ts`
   - `src/app/api/chat/route.ts`
   - `src/app/api/sessions/[sessionId]/reasoning-traces/route.ts`
-  - `docs/initial_spec.md` v0.33
+  - `docs/features/0_bootstrap/initial_spec.md` v0.34
 
 ## ADR-010: 강제출처 ASK_CLARIFY 승격 + finalize abort write-guard
 - 날짜: 2026-03-08
@@ -171,4 +171,4 @@
   - `src/application/usecases/handleChatTurn.ts`
   - `src/application/ports/repository.ts`
   - `src/infrastructure/sqlite/repository.ts`
-  - `docs/initial_spec.md` v0.33
+  - `docs/features/0_bootstrap/initial_spec.md` v0.34

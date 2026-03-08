@@ -57,6 +57,26 @@ describe("StubLlmAdapter", () => {
     expect(askClarify.nextAction).toBe("ASK_CLARIFY");
     expect(refuse.nextAction).toBe("REFUSE");
   });
+
+  it("updates masterContext after multi-turn career counseling context is accumulated", async () => {
+    const adapter = new StubLlmAdapter();
+
+    const updated = await adapter.suggestMasterContextUpdate({
+      masterContext: "이 세션은 진로상담용이다.",
+      history: [
+        { role: "user", content: "생명과학 전공을 고민 중이야." },
+        { role: "ai", content: "어떤 활동이 제일 재밌었는지 먼저 보자!" },
+        { role: "user", content: "세특이랑 연구 활동도 같이 챙기고 싶어." },
+        { role: "ai", content: "좋아, 그러면 학교 활동 쪽도 같이 보자." }
+      ],
+      message: "버클리 life science 쪽으로 가려면 지금 어떤 탐구를 해야 할지 고민이야.",
+      assistantReply: "좋아, 그럼 탐구 축부터 같이 잡아보자!",
+      finalNextAction: "DIRECT_ANSWER"
+    });
+
+    expect(updated).toContain("[상담 메모]");
+    expect(updated).toContain("핵심 고민");
+  });
 });
 
 describe("GeminiLlmAdapter", () => {
@@ -78,6 +98,39 @@ describe("GeminiLlmAdapter", () => {
     });
 
     expect(decision.nextAction).toBe("ASK_CLARIFY");
+  });
+
+  it("parses masterContext update suggestion JSON", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"shouldUpdate":true,"memoryNote":"사용자는 생명과학 진로와 세특 탐구 방향을 고민 중이다.","updatedMasterContext":"기존 컨텍스트\\n\\n[상담 메모]\\n- 사용자는 생명과학 진로와 세특 탐구 방향을 고민 중이다.","reason":"지속 활용 가치가 있는 맥락"}'
+                }
+              ]
+            }
+          }
+        ]
+      })
+    });
+
+    const adapter = new GeminiLlmAdapter("key");
+    const updated = await adapter.suggestMasterContextUpdate({
+      masterContext: "기존 컨텍스트",
+      history: [
+        { role: "user", content: "생명과학 진로가 고민이야." },
+        { role: "ai", content: "좋아, 활동 방향도 같이 보자." }
+      ],
+      message: "세특 탐구 쪽으로 뭘 쌓아야 할지 모르겠어.",
+      assistantReply: "관심 축부터 같이 정리해보자!",
+      finalNextAction: "DIRECT_ANSWER"
+    });
+
+    expect(updated).toContain("[상담 메모]");
   });
 });
 

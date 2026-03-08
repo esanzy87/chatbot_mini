@@ -30,8 +30,8 @@ export class RuleTransformAdapter {
     }
 
     return {
-      resultText: `안녕하세요. 오늘 발표 주제는 다음과 같습니다.\n\n${base}`,
-      appliedRules: ["format=presentation_script", "tone=formal"]
+      resultText: `안녕하세요. 좋아, 발표할 때는 이런 흐름으로 풀면 자연스러워!\n\n${base}`,
+      appliedRules: ["format=presentation_script", "tone=casual"]
     };
   }
 }

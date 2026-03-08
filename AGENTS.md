@@ -1,8 +1,8 @@
 # AGENTS.md (Minimal)
 
 ## 기준 문서
-- 우선순위: `docs/initial_spec.md` > `docs/prd.md`
-- 현재 구현 기준: Scratch MVP (`initial_spec.md` v0.28)
+- 우선순위: `docs/features/0_bootstrap/initial_spec.md` > `docs/features/0_bootstrap/prd.md`
+- 현재 구현 기준: Scratch MVP (`initial_spec.md` v0.34)
 
 ## 구현 범위(요약)
 - Next.js App Router + TypeScript

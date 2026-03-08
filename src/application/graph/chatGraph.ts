@@ -15,6 +15,7 @@ import type { LlmPort } from "@/application/ports/llm";
 import type { SearchPort, SearchResultItem } from "@/application/ports/search";
 import type { ChatTurnRepository } from "@/application/ports/repository";
 import { withToolTimeout } from "@/application/utils/withToolTimeout";
+import { clampMasterContext, summarizeMasterContext } from "@/application/utils/masterContext";
 
 type ToolEventPayload = {
   turnId: string;
@@ -78,6 +79,28 @@ const ChatState = Annotation.Root({
 
 type State = typeof ChatState.State;
 
+const CAREER_COUNSELING_KEYWORDS = [
+  "진로",
+  "전공",
+  "학과",
+  "세특",
+  "학생부",
+  "탐구",
+  "연구",
+  "동아리",
+  "입시",
+  "유학",
+  "버클리",
+  "berkeley",
+  "지원",
+  "활동",
+  "로드맵",
+  "커리어",
+  "의대",
+  "생명과학",
+  "life science"
+];
+
 function mapModelErrorCode(error: unknown): "MODEL_PROVIDER_ERROR" | "INTERNAL_SERVER_ERROR" {
   if (error instanceof Error && error.message.includes("MODEL_PROVIDER_ERROR")) {
     return "MODEL_PROVIDER_ERROR";
@@ -91,6 +114,24 @@ function assertRouteDecision(routeDecision: RouteDecision | null): RouteDecision
     throw new Error("ROUTE_DECISION_MISSING");
   }
   return routeDecision;
+}
+
+function countUserTurns(history: Array<{ role: string; content: string }>, currentMessage: string): number {
+  const priorUserTurns = history.filter((item) => item.role === "user").length;
+  return priorUserTurns + (currentMessage.trim().length > 0 ? 1 : 0);
+}
+
+function isCareerCounselingTurn(state: State): boolean {
+  const corpus = [state.masterContext, state.userMessage, ...state.history.map((item) => item.content)].join(" ").toLowerCase();
+  return CAREER_COUNSELING_KEYWORDS.some((keyword) => corpus.includes(keyword.toLowerCase()));
+}
+
+function shouldAttemptMasterContextUpdate(state: State): boolean {
+  if (state.finalNextAction === "REFUSE") {
+    return false;
+  }
+
+  return isCareerCounselingTurn(state) && countUserTurns(state.history, state.userMessage) >= 3;
 }
 
 function chooseTool(routeDecision: RouteDecision, userMessage: string): State["pendingTool"] {
@@ -239,7 +280,7 @@ function buildGraph(deps: ChatGraphDeps) {
       const routeDecision = assertRouteDecision(state.routeDecision);
 
       return {
-        finalText: routeDecision.clarifyQuestion ?? "질문 의도를 더 구체적으로 알려주세요.",
+        finalText: routeDecision.clarifyQuestion ?? "조금만 더 알려주면 내가 더 정확하게 같이 볼 수 있어! 뭐가 제일 궁금한지 한 문장으로 말해줄래? ✨",
         finalNextAction: "ASK_CLARIFY",
         doneOk: true
       };
@@ -248,7 +289,7 @@ function buildGraph(deps: ChatGraphDeps) {
       guardAbort();
       const routeDecision = assertRouteDecision(state.routeDecision);
       return {
-        finalText: `요청을 직접 수행할 수 없습니다. 대신 학습 계획을 같이 세워볼게요. (${routeDecision.refuseReason ?? "정책상 거절"})`,
+        finalText: `그건 내가 대신 해주면 너한테 진짜 도움이 안 돼서 같이 못 해 🥺 대신 방향 잡기나 구조 짜기는 같이 해줄게! (${routeDecision.refuseReason ?? "정책상 거절"})`,
         finalNextAction: "REFUSE",
         doneOk: true
       };
@@ -258,7 +299,7 @@ function buildGraph(deps: ChatGraphDeps) {
       const routeDecision = assertRouteDecision(state.routeDecision);
       if (state.toolLoopCount >= 2) {
         return {
-          finalText: "도구 호출이 반복 실패했습니다. 질문 범위를 좁혀 다시 요청해 주세요.",
+          finalText: "자료 찾는 과정에서 자꾸 막혀서, 이번엔 질문 범위를 조금만 더 좁혀보자! 키워드 하나만 더 줄래? ✨",
           finalNextAction: "ASK_CLARIFY",
           doneOk: true,
           shouldRetry: false
@@ -275,7 +316,7 @@ function buildGraph(deps: ChatGraphDeps) {
       if (!state.pendingTool) {
         return {
           doneOk: true,
-          finalText: "도구 실행 대상이 없습니다.",
+          finalText: "이번 턴에서는 바로 돌릴 도구가 안 보여. 내가 도우려면 질문을 조금만 더 구체적으로 말해줘! 😆",
           finalNextAction: "ASK_CLARIFY",
           shouldRetry: false
         };
@@ -333,7 +374,7 @@ function buildGraph(deps: ChatGraphDeps) {
           if (state.needsSources && state.forceSourceMode === "FORCED" && sources.length === 0) {
             return {
               toolExecutions: [...state.toolExecutions, execution],
-              finalText: "출처가 충분하지 않아 우선 질문 범위를 좁혀야 합니다.",
+              finalText: "지금 찾은 자료만으로는 출처가 좀 약해. 찾고 싶은 대상이나 조건을 한 단계만 더 좁혀보자! 🥺",
               finalNextAction: "ASK_CLARIFY",
               finalSources: [],
               doneOk: true,
@@ -346,11 +387,11 @@ function buildGraph(deps: ChatGraphDeps) {
             toolExecutions: [...state.toolExecutions, execution],
             finalText:
               sources.length > 0
-                ? `관련 자료를 확인했습니다. ${sources
+                ? `찾아보니까 이런 자료들이 먼저 보여! ${sources
                     .map((item) => item.title)
                     .slice(0, 3)
                     .join(", ")}`
-                : "관련 자료를 찾지 못했습니다. 질문을 조금 더 구체화해 주세요.",
+                : "내가 바로 쓸 만한 자료를 아직 못 찾았어. 키워드나 범위를 조금만 더 구체화해줄래? ✨",
             finalNextAction: "CALL_TOOL",
             finalSources: sources,
             doneOk: true,
@@ -475,8 +516,8 @@ function buildGraph(deps: ChatGraphDeps) {
           finalNextAction: fallbackAction,
           finalText:
             fallbackAction === "ASK_CLARIFY"
-              ? "도구 실행에 실패했습니다. 질문 범위나 키워드를 더 구체화해 주세요."
-              : "도구 호출 없이 답변 가능한 범위에서 안내합니다.",
+              ? "도구 쪽에서 오류가 나서, 키워드나 범위를 조금만 더 다듬어서 다시 볼까? 😵"
+              : "도구 없이도 지금 줄 수 있는 현실적인 방향부터 같이 정리해볼게! ✨",
           doneOk: true,
           shouldRetry: false,
           toolLoopCount: state.toolLoopCount + 1
@@ -527,6 +568,35 @@ function buildGraph(deps: ChatGraphDeps) {
             : "NON_CALL_TOOL_NORMAL";
 
       const nextCounter = nextConsecutiveToolFailureTurns(state.consecutiveToolFailureTurns, outcome);
+      let masterContextUpdate:
+        | {
+            content: string;
+            summary: string;
+          }
+        | undefined;
+
+      if (shouldAttemptMasterContextUpdate(state)) {
+        try {
+          const suggested = await deps.llmPort.suggestMasterContextUpdate({
+            masterContext: state.masterContext,
+            history: state.history,
+            message: state.userMessage,
+            assistantReply: state.finalText,
+            finalNextAction: state.finalNextAction
+          });
+
+          if (suggested && suggested.trim() && suggested.trim() !== state.masterContext.trim()) {
+            const content = clampMasterContext(suggested);
+            const summary = summarizeMasterContext(content) || [...content].slice(0, 120).join("");
+            masterContextUpdate = {
+              content,
+              summary
+            };
+          }
+        } catch {
+          masterContextUpdate = undefined;
+        }
+      }
 
       deps.repository.finalizeTurn({
         sessionId: state.sessionId,
@@ -564,6 +634,7 @@ function buildGraph(deps: ChatGraphDeps) {
         },
         nextConsecutiveToolFailureTurns: nextCounter,
         sessionUpdatedAt: new Date().toISOString(),
+        ...(masterContextUpdate ? { masterContextUpdate } : {}),
         shouldPersist: () => !deps.isAborted()
       });
 
