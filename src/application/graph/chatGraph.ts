@@ -1,7 +1,7 @@
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { z } from "zod";
 import { createEntityId, createToolCallId } from "@/core/id/ids";
-import type { NextAction, RouteDecision, SearchQueryPlan, SourceItem } from "@/domain/models";
+import type { NextAction, RouteDecision, SearchQueryPlan, SearchReflection, SourceItem } from "@/domain/models";
 import { decideForceSourceMode } from "@/domain/policies/sourceMode";
 import {
   applyConfidenceFallbackWithSourcePolicy,
@@ -50,6 +50,10 @@ const ChatState = Annotation.Root({
   history: Annotation<Array<{ role: string; content: string }>>(),
   routeDecision: Annotation<RouteDecision | null>(),
   searchPlan: Annotation<SearchQueryPlan | null>(),
+  searchReflection: Annotation<SearchReflection | null>(),
+  latestSearchResults: Annotation<SearchResultItem[]>(),
+  latestSearchSources: Annotation<SourceItem[]>(),
+  hasSearchResultsReady: Annotation<boolean>(),
   forceSourceMode: Annotation<"FORCED" | "NOT_FORCED">(),
   pendingTool: Annotation<null | {
     toolName: "search" | "transform";
@@ -163,6 +167,20 @@ function chooseTool(routeDecision: RouteDecision, userMessage: string): State["p
 function resolveSearchQueryFromPlan(searchPlan: SearchQueryPlan | null, userMessage: string): string {
   const planned = searchPlan?.searchQueries?.[0]?.trim();
   return planned && planned.length > 0 ? planned : userMessage;
+}
+
+function buildDecisionReasonSummary(state: State): string {
+  const parts = [state.routeDecision?.reason ?? "판단 요약 없음"];
+
+  if (state.searchPlan?.searchIntent) {
+    parts.push(`검색 계획: ${state.searchPlan.searchIntent}`);
+  }
+
+  if (state.searchReflection?.reason) {
+    parts.push(`검색 재판단: ${state.searchReflection.reason}`);
+  }
+
+  return toReasonSummary(parts.join(" / "));
 }
 
 const searchArgsSchema = z.object({
@@ -307,7 +325,7 @@ function buildGraph(deps: ChatGraphDeps) {
         doneOk: true
       };
     })
-    .addNode("callModelWithTools", async (state: State): Promise<Partial<State>> => {
+    .addNode("prepareSearchPlan", async (state: State): Promise<Partial<State>> => {
       guardAbort();
       const routeDecision = assertRouteDecision(state.routeDecision);
       if (state.toolLoopCount >= 2) {
@@ -333,17 +351,25 @@ function buildGraph(deps: ChatGraphDeps) {
       }
 
       return {
+        searchPlan,
+        shouldRetry: false
+      };
+    })
+    .addNode("callModelWithTools", async (state: State): Promise<Partial<State>> => {
+      guardAbort();
+      const routeDecision = assertRouteDecision(state.routeDecision);
+
+      return {
         pendingTool:
           routeDecision.allowedTools.includes("search")
             ? {
                 toolName: "search",
                 args: {
-                  query: resolveSearchQueryFromPlan(searchPlan, state.userMessage),
+                  query: resolveSearchQueryFromPlan(state.searchPlan, state.userMessage),
                   topK: 5
                 }
               }
             : chooseTool(routeDecision, state.userMessage),
-        searchPlan,
         shouldRetry: false
       };
     })
@@ -419,41 +445,11 @@ function buildGraph(deps: ChatGraphDeps) {
             };
           }
 
-          let finalText: string;
-          if (rawItems.length > 0) {
-            try {
-              finalText = await deps.llmPort.generateSearchAnswer({
-                message: state.userMessage,
-                masterContext: state.masterContext,
-                history: state.history,
-                searchResults: rawItems,
-                ...(deps.abortSignal ? { abortSignal: deps.abortSignal } : {}),
-                onToken: (delta) => {
-                  if (!deps.isAborted()) {
-                    deps.emitToken({ turnId: state.turnId, delta });
-                  }
-                }
-              });
-            } catch (error) {
-              if (error instanceof Error && error.message.includes("MODEL_PROVIDER_ERROR")) {
-                finalText = `관련 자료를 확인했습니다. ${sources
-                  .map((item) => item.title)
-                  .slice(0, 3)
-                  .join(", ")}`;
-              } else {
-                throw error;
-              }
-            }
-          } else {
-            finalText = "관련 자료를 찾지 못했습니다. 키워드나 범위를 조금 더 구체적으로 알려주세요.";
-          }
-
           return {
             toolExecutions: [...state.toolExecutions, execution],
-            finalText,
-            finalNextAction: "CALL_TOOL",
-            finalSources: sources,
-            doneOk: true,
+            latestSearchResults: rawItems,
+            latestSearchSources: sources,
+            hasSearchResultsReady: true,
             shouldRetry: false,
             toolLoopCount: state.toolLoopCount + 1
           };
@@ -491,6 +487,7 @@ function buildGraph(deps: ChatGraphDeps) {
           finalText: result.resultText,
           finalNextAction: "CALL_TOOL",
           doneOk: true,
+          hasSearchResultsReady: false,
           shouldRetry: false,
           toolLoopCount: state.toolLoopCount + 1
         };
@@ -578,10 +575,102 @@ function buildGraph(deps: ChatGraphDeps) {
               ? "도구 실행 중 오류가 발생했습니다. 키워드나 범위를 조금 더 구체화해 다시 요청해 주세요."
               : "도구 호출 없이 답변 가능한 범위에서 안내드립니다.",
           doneOk: true,
+          hasSearchResultsReady: false,
           shouldRetry: false,
           toolLoopCount: state.toolLoopCount + 1
         };
       }
+    })
+    .addNode("reflectSearchCoverage", async (state: State): Promise<Partial<State>> => {
+      guardAbort();
+
+      try {
+        const reflection = await deps.llmPort.reflectSearchCoverage({
+          message: state.userMessage,
+          masterContext: state.masterContext,
+          history: state.history,
+          searchPlan: state.searchPlan,
+          searchResults: state.latestSearchResults
+        });
+
+        if (reflection.decision === "REFINE_SEARCH" && state.toolLoopCount < 2) {
+          return {
+            searchReflection: reflection,
+            pendingTool: {
+              toolName: "search",
+              args: {
+                query: reflection.followupQuery ?? state.userMessage,
+                topK: 5
+              }
+            },
+            hasSearchResultsReady: false,
+            shouldRetry: true
+          };
+        }
+
+        if (reflection.decision === "ASK_CLARIFY") {
+          return {
+            searchReflection: reflection,
+            finalText: reflection.clarifyQuestion ?? "찾고 싶은 조건을 조금 더 구체적으로 알려주세요.",
+            finalNextAction: "ASK_CLARIFY",
+            finalSources: state.latestSearchSources,
+            doneOk: true,
+            hasSearchResultsReady: false,
+            shouldRetry: false
+          };
+        }
+
+        return {
+          searchReflection: reflection,
+          shouldRetry: false
+        };
+      } catch {
+        return {
+          searchReflection: null,
+          shouldRetry: false
+        };
+      }
+    })
+    .addNode("answerWithSearch", async (state: State): Promise<Partial<State>> => {
+      guardAbort();
+
+      let finalText: string;
+      if (state.latestSearchResults.length > 0) {
+        try {
+          finalText = await deps.llmPort.generateSearchAnswer({
+            message: state.userMessage,
+            masterContext: state.masterContext,
+            history: state.history,
+            searchResults: state.latestSearchResults,
+            ...(deps.abortSignal ? { abortSignal: deps.abortSignal } : {}),
+            onToken: (delta) => {
+              if (!deps.isAborted()) {
+                deps.emitToken({ turnId: state.turnId, delta });
+              }
+            }
+          });
+        } catch (error) {
+          if (error instanceof Error && error.message.includes("MODEL_PROVIDER_ERROR")) {
+            finalText = `관련 자료를 확인했습니다. ${state.latestSearchSources
+              .map((item) => item.title)
+              .slice(0, 3)
+              .join(", ")}`;
+          } else {
+            throw error;
+          }
+        }
+      } else {
+        finalText = "관련 자료를 찾지 못했습니다. 키워드나 범위를 조금 더 구체적으로 알려주세요.";
+      }
+
+      return {
+        finalText,
+        finalNextAction: "CALL_TOOL",
+        finalSources: state.latestSearchSources,
+        doneOk: true,
+        hasSearchResultsReady: false,
+        shouldRetry: false
+      };
     })
     .addNode("finalize", async (state: State): Promise<Partial<State>> => {
       guardAbort();
@@ -687,7 +776,7 @@ function buildGraph(deps: ChatGraphDeps) {
           sessionId: state.sessionId,
           turnId: state.turnId,
           nextAction: state.finalNextAction,
-          reasonSummary: toReasonSummary(state.routeDecision?.reason ?? "판단 요약 없음"),
+          reasonSummary: buildDecisionReasonSummary(state),
           allowedTools: state.routeDecision?.allowedTools ?? [],
           createdAt: new Date().toISOString()
         },
@@ -717,8 +806,12 @@ function buildGraph(deps: ChatGraphDeps) {
       if (decision.nextAction === "REFUSE") {
         return "refuse";
       }
+      if (decision.allowedTools.includes("search")) {
+        return "prepareSearchPlan";
+      }
       return "callModelWithTools";
     })
+    .addEdge("prepareSearchPlan", "callModelWithTools")
     .addConditionalEdges("callModelWithTools", (state: State) => {
       if (state.pendingTool) {
         return "toolNode";
@@ -729,8 +822,21 @@ function buildGraph(deps: ChatGraphDeps) {
       if (state.shouldRetry && state.toolLoopCount < 2) {
         return "callModelWithTools";
       }
+      if (state.hasSearchResultsReady) {
+        return "reflectSearchCoverage";
+      }
       return "finalize";
     })
+    .addConditionalEdges("reflectSearchCoverage", (state: State) => {
+      if (state.shouldRetry && state.pendingTool && state.toolLoopCount < 2) {
+        return "toolNode";
+      }
+      if (state.finalText.length > 0) {
+        return "finalize";
+      }
+      return "answerWithSearch";
+    })
+    .addEdge("answerWithSearch", "finalize")
     .addEdge("directAnswer", "finalize")
     .addEdge("askClarify", "finalize")
     .addEdge("refuse", "finalize")
@@ -768,6 +874,10 @@ export async function runChatGraph(
     history: [],
     routeDecision: null,
     searchPlan: null,
+    searchReflection: null,
+    latestSearchResults: [],
+    latestSearchSources: [],
+    hasSearchResultsReady: false,
     forceSourceMode: "NOT_FORCED",
     pendingTool: null,
     toolLoopCount: 0,
@@ -787,7 +897,7 @@ export async function runChatGraph(
     finalNextAction: finalState.finalNextAction,
     finalText: finalState.finalText,
     sources: finalState.finalSources,
-    reasonSummary: toReasonSummary(finalState.routeDecision?.reason ?? "판단 요약 없음"),
+    reasonSummary: buildDecisionReasonSummary(finalState),
     errorCode: finalState.unrecoverableErrorCode
   };
 }

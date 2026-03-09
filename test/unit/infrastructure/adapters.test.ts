@@ -112,6 +112,20 @@ describe("StubLlmAdapter", () => {
     expect(plan.searchQueries[0]).not.toBe("버클리 생명과학 전공 관련 최신 통계랑 공식 출처 찾아줘");
     expect(plan.answerShape).toBe("latest");
   });
+
+  it("returns refine_search when stub reflection sees no results", async () => {
+    const adapter = new StubLlmAdapter();
+    const reflection = await adapter.reflectSearchCoverage({
+      message: "버클리 생명과학 최신 통계 알려줘",
+      masterContext: "유학 진로 상담",
+      history: [],
+      searchPlan: null,
+      searchResults: []
+    });
+
+    expect(reflection.decision).toBe("REFINE_SEARCH");
+    expect(reflection.followupQuery).toContain("공식");
+  });
 });
 
 describe("GeminiLlmAdapter", () => {
@@ -168,6 +182,38 @@ describe("GeminiLlmAdapter", () => {
     expect(updated).toContain("[상담 메모]");
   });
 
+  it("sends Gemini requests with systemInstruction and multi-turn contents", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: '{"nextAction":"DIRECT_ANSWER","allowedTools":[],"confidence":0.8,"reason":"설명 가능"}' }] } }]
+      })
+    });
+
+    const adapter = new GeminiLlmAdapter("key");
+    await adapter.planNextAction({
+      sessionId: "sess_01HW8K4X4X5N9F3D1E7Q2R6M8P",
+      message: "질문",
+      masterContext: "context",
+      forceSourceMode: "NOT_FORCED",
+      history: [
+        { role: "user", content: "이전 사용자 질문" },
+        { role: "ai", content: "이전 답변" }
+      ]
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const payload = JSON.parse(String(init.body)) as {
+      systemInstruction?: { parts?: Array<{ text?: string }> };
+      contents?: Array<{ role?: string; parts?: Array<{ text?: string }> }>;
+    };
+
+    expect(payload.systemInstruction?.parts?.[0]?.text).toContain("채팅 오케스트레이터의 라우터");
+    expect(payload.contents?.[0]?.role).toBe("user");
+    expect(payload.contents?.[1]?.role).toBe("model");
+    expect(payload.contents?.at(-1)?.parts?.[0]?.text).toContain("[이번 사용자 메시지]");
+  });
+
   it("falls back to original query when search planner JSON parsing fails", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
@@ -184,6 +230,34 @@ describe("GeminiLlmAdapter", () => {
     });
 
     expect(plan.searchQueries[0]).toBe("최신 통계 알려줘");
+  });
+
+  it("falls back to ANSWER when search reflection JSON parsing fails and results exist", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: "not-json" }] } }]
+      })
+    });
+
+    const adapter = new GeminiLlmAdapter("key");
+    const reflection = await adapter.reflectSearchCoverage({
+      message: "최신 통계 알려줘",
+      masterContext: "context",
+      history: [],
+      searchPlan: null,
+      searchResults: [
+        {
+          title: "문서 1",
+          snippet: "요약 1",
+          source: "stub-search",
+          url: "https://example.com/1",
+          bodyText: "통계 본문"
+        }
+      ]
+    });
+
+    expect(reflection.decision).toBe("ANSWER");
   });
 });
 

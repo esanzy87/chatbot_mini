@@ -224,6 +224,38 @@ describe("UI /chat/[sessionId]", () => {
 
     expect(await screen.findByText("CALL_TOOL")).toBeInTheDocument();
     expect(screen.getByText("허용 도구: search")).toBeInTheDocument();
+    expect(screen.getByText("출처가 필요한 요청이라 검색 도구를 사용함")).toBeInTheDocument();
+  });
+
+  it("renders sources from search message payload", async () => {
+    installFetchMock({
+      chatResponses: [
+        () =>
+          sseResponse([
+            sseBlock("message", {
+              turnId: "turn_01",
+              text: "검색 응답",
+              nextAction: "CALL_TOOL",
+              sources: [
+                {
+                  title: "공식 문서",
+                  url: "https://example.com/doc",
+                  source: "official-doc"
+                }
+              ]
+            }),
+            sseBlock("done", { turnId: "turn_01", ok: true, latencyMs: 10 })
+          ])
+      ]
+    });
+
+    render(<ChatClient sessionId={SESSION_ID} />);
+    const input = await screen.findByPlaceholderText("질문을 입력하세요");
+    fireEvent.change(input, { target: { value: "검색해줘" } });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
+
+    expect(await screen.findByText("검색 응답")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "공식 문서" })).toHaveAttribute("href", "https://example.com/doc");
   });
 
   it("shows debug detail panel only when debug mode is enabled", async () => {

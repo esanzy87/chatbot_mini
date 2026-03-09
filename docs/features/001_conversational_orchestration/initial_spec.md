@@ -11,7 +11,7 @@
 
 - 검색 경로에서 사용자 메시지를 그대로 검색하기보다 재작성된 검색 쿼리를 우선 사용한다.
 - 검색 결과 수집 후, 결과 적합성을 재판단하는 단계가 추가된다.
-- 모호한 질문에서 무조건 `ASK_CLARIFY`로 종료하지 않고, 가능한 경우 가정 기반 답변을 우선 제공한다.
+- 모호한 질문에서 무조건 `ASK_CLARIFY`로 종료하지 않도록 라우팅/프롬프트 정책을 완화한다.
 - Gemini live 경로에서 대화 히스토리가 role 기반 multi-turn 형태로 전달된다.
 - 검색 후 답변은 "직접 답변 -> 근거 정리 -> 출처" 구조를 따른다.
 - 기존 allowlist, 스키마 검증, internal token, reasoning trace 정책은 깨지지 않는다.
@@ -63,6 +63,9 @@
   - `reason: string`
 - `REFINE_SEARCH`일 경우 1회에 한해 좁혀진 2차 검색을 허용한다.
 - 전체 도구 루프 한도는 기존 2회를 유지한다.
+- 현재 구현 기준:
+  - `ASK_CLARIFY`가 반환되면 즉시 clarify 응답으로 종료한다.
+  - `ANSWER` 우선 재해석 규칙은 아직 구현하지 않았으며, 후속 개선 항목으로 남긴다.
 
 ### 3.3 라우팅 정책 조정
 
@@ -109,7 +112,7 @@
 - `CALL_TOOL(transform)`은 기존 경로 유지
 - `CALL_TOOL(search)`만 planner/reflector를 탄다
 - 2차 검색은 최대 1회
-- 반사 단계에서 `ASK_CLARIFY`가 나오더라도, 이미 충분한 일반 답변이 가능한 경우 `ANSWER`를 우선할 수 있다
+- 현재 구현에서는 반사 단계의 `ASK_CLARIFY`를 그대로 따른다
 
 ## 6. 프롬프트 정책
 
@@ -132,12 +135,13 @@
 ## 7. Reasoning trace 정책
 
 - raw planner/reflection 응답은 저장하지 않는다.
-- 필요한 경우 아래 수준의 요약만 trace에 반영한다.
-  - `searchPlanSummary`: "비교형 검색", "최신 정보 확인", "학교별 조건 재검색" 등 1문장
-  - `searchReflectionSummary`: "자료 충분", "검색어 재정제", "질문 구체화 필요"
+- 현재 구현에서는 별도 `searchPlanSummary` / `searchReflectionSummary` 필드를 추가하지 않는다.
+- 대신 기존 `reasonSummary` 문자열에 아래 수준의 텍스트 요약을 합성한다.
+  - `검색 계획: {searchIntent}`
+  - `검색 재판단: {reflection.reason}`
 - 기존 200자 제한과 마스킹 규칙을 그대로 적용한다.
 - Phase 1에서는 reasoning trace 스키마를 변경하지 않는다.
-- planner/reflection 요약 노출은 Phase 3에서 별도 결정한다.
+- planner/reflection 전용 필드 분리는 후속 개선 항목으로 남긴다.
 
 ## 8. 테스트 원칙
 
@@ -154,6 +158,7 @@
   - 최종 응답 첫 문단 직접 답변 여부
   - `sources` 포함 여부
 - 자연스러움 평가는 동일 20문장에 대해 1~5점 수동 평가표를 사용한다.
+- live 경로는 smoke 수준 검증만 반영되어 있으며, 001 기능 전용 live 회귀셋은 아직 없다.
 
 ## 9. 구현 우선순위
 
@@ -170,7 +175,7 @@
 - transform 경로, SSE 계약, DB 스키마는 건드리지 않는다.
 - search planner는 query rewrite 전용으로 제한하며, 재검색/reflection/trace 확장은 포함하지 않는다.
 
-### Phase 2 (후속)
+### Phase 2 (구현 반영)
 
 - search reflection 노드 추가
 - 2차 검색 1회 허용
@@ -180,7 +185,7 @@
 
 - 검색 후 재판단을 통해 기계적인 종료를 줄인다.
 
-### Phase 3 (후속)
+### Phase 3 (구현 반영)
 
 - Gemini role 기반 multi-turn 입력 개선
 - reasoning trace 최소 확장 여부 결정
@@ -188,6 +193,7 @@
 목표:
 
 - 전반적인 대화 연속성과 웹앱형 체감을 끌어올린다.
+- 현재 구현은 multi-turn 입력과 최소 trace 합성 반영까지 포함하며, live 전용 회귀셋은 아직 별도 구성하지 않았다.
 
 ## 10. 구현 체크포인트
 
@@ -196,12 +202,13 @@
   - search path 답변 첫 문단이 직접 답변인지 수동 확인
 - Phase 2 완료 시:
   - 2차 검색이 최대 1회만 일어나는지 자동 테스트 확인
-  - 검색 실패/부족 시 `ASK_CLARIFY` 남용 감소 확인
+  - 검색 실패/부족 시 기존보다 보수적인 `ASK_CLARIFY` fallback이 완화되었는지 확인
 - Phase 3 완료 시:
-  - live 모드에서 이전 턴 문맥 반영감이 개선되었는지 수동 검증
+  - Gemini multi-turn 입력과 최소 trace 합성 반영이 코드/테스트 기준으로 확인
+  - live 모드 품질 평가는 smoke 수준만 반영하고, 전용 회귀셋은 후속 과제로 남긴다
 
 ## 11. 확정 상태
 
-- v0.1 초안
-- feature 폴더 생성 및 문제 정의/설계 방향 문서화 완료
-- 구현 우선순위와 단계별 목표 정의 완료
+- v0.1 구현 반영본
+- feature 폴더 및 관련 문서 정리 완료
+- Phase 1~3 범위의 현재 코드 반영 상태를 문서에 동기화 완료

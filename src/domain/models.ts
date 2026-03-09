@@ -56,3 +56,10 @@ export type SearchQueryPlan = {
   answerShape: "definition" | "comparison" | "latest" | "process" | "recommendation";
   reason: string;
 };
+
+export type SearchReflection = {
+  decision: "ANSWER" | "REFINE_SEARCH" | "ASK_CLARIFY";
+  followupQuery: string | null;
+  clarifyQuestion: string | null;
+  reason: string;
+};

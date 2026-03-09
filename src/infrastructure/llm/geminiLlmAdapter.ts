@@ -1,6 +1,8 @@
 import type { LlmPort, PlanNextActionInput } from "@/application/ports/llm";
-import type { RouteDecision, SearchQueryPlan } from "@/domain/models";
+import type { RouteDecision, SearchQueryPlan, SearchReflection } from "@/domain/models";
 import { validateRouteDecision } from "@/domain/policies/routeDecision";
+import { fallbackSearchQueryPlan, validateSearchQueryPlan } from "@/domain/policies/searchPlan";
+import { fallbackSearchReflection, validateSearchReflection } from "@/domain/policies/searchReflection";
 import {
   buildChatSystemPrompt,
   buildChatUserPrompt,
@@ -8,6 +10,8 @@ import {
   buildMemoryUpdateUserPrompt,
   buildSearchPlannerSystemPrompt,
   buildSearchPlannerUserPrompt,
+  buildSearchReflectionSystemPrompt,
+  buildSearchReflectionUserPrompt,
   buildSearchAnswerSystemPrompt,
   buildSearchAnswerUserPrompt,
   buildRouterSystemPrompt,
@@ -33,6 +37,23 @@ function extractText(payload: {
   }>;
 }): string {
   return payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("\n") ?? "";
+}
+
+type GeminiContent = {
+  role: "user" | "model";
+  parts: Array<{ text: string }>;
+};
+
+function toGeminiHistoryContents(history: Array<{ role: string; content: string }>, latestUserText: string): GeminiContent[] {
+  const historyContents = history
+    .filter((item) => item.role === "user" || item.role === "ai")
+    .slice(-8)
+    .map((item) => ({
+      role: item.role === "user" ? "user" : "model",
+      parts: [{ text: item.content }]
+    })) as GeminiContent[];
+
+  return [...historyContents, { role: "user", parts: [{ text: latestUserText }] }];
 }
 
 async function fetchGemini(
@@ -137,17 +158,6 @@ function fallbackAskClarify(reason: string): RouteDecision {
   };
 }
 
-function fallbackSearchPlan(message: string, reason: string): SearchQueryPlan {
-  return {
-    searchIntent: "기본 검색 fallback",
-    searchQueries: [message.trim()],
-    mustInclude: [],
-    mustExclude: [],
-    answerShape: "definition",
-    reason
-  };
-}
-
 export class GeminiLlmAdapter implements LlmPort {
   constructor(
     private readonly apiKey: string,
@@ -168,7 +178,10 @@ export class GeminiLlmAdapter implements LlmPort {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }]
+            systemInstruction: {
+              parts: [{ text: systemPrompt }]
+            },
+            contents: toGeminiHistoryContents(input.history, userPrompt)
           })
         },
         {
@@ -218,7 +231,10 @@ export class GeminiLlmAdapter implements LlmPort {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }]
+            systemInstruction: {
+              parts: [{ text: systemPrompt }]
+            },
+            contents: toGeminiHistoryContents(input.history, userPrompt)
           })
         },
         {
@@ -226,11 +242,11 @@ export class GeminiLlmAdapter implements LlmPort {
         }
       );
     } catch {
-      return fallbackSearchPlan(input.message, "검색 플래너 호출 실패");
+      return fallbackSearchQueryPlan(input.message, "검색 플래너 호출 실패");
     }
 
     if (!response.ok) {
-      return fallbackSearchPlan(input.message, "검색 플래너 응답 실패");
+      return fallbackSearchQueryPlan(input.message, "검색 플래너 응답 실패");
     }
 
     const payload = (await response.json()) as {
@@ -243,35 +259,81 @@ export class GeminiLlmAdapter implements LlmPort {
 
     try {
       const jsonBlock = extractJsonBlock(extractText(payload));
-      const parsed = JSON.parse(jsonBlock) as Partial<SearchQueryPlan>;
-      const queries = Array.isArray(parsed.searchQueries)
-        ? parsed.searchQueries.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean)
-        : [];
-
-      if (queries.length === 0) {
-        return fallbackSearchPlan(input.message, "검색 플랜 쿼리 비어 있음");
-      }
-
-      return {
-        searchIntent: typeof parsed.searchIntent === "string" && parsed.searchIntent.trim() ? parsed.searchIntent.trim() : "검색 의도 확인",
-        searchQueries: queries,
-        mustInclude: Array.isArray(parsed.mustInclude)
-          ? parsed.mustInclude.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean)
-          : [],
-        mustExclude: Array.isArray(parsed.mustExclude)
-          ? parsed.mustExclude.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean)
-          : [],
-        answerShape:
-          parsed.answerShape === "comparison" ||
-          parsed.answerShape === "latest" ||
-          parsed.answerShape === "process" ||
-          parsed.answerShape === "recommendation"
-            ? parsed.answerShape
-            : "definition",
-        reason: typeof parsed.reason === "string" && parsed.reason.trim() ? parsed.reason.trim() : "검색어 재작성"
-      };
+      const parsed = JSON.parse(jsonBlock) as SearchQueryPlan;
+      return validateSearchQueryPlan(parsed);
     } catch {
-      return fallbackSearchPlan(input.message, "검색 플래너 파싱 실패");
+      return fallbackSearchQueryPlan(input.message, "검색 플래너 파싱 실패");
+    }
+  }
+
+  async reflectSearchCoverage(input: {
+    message: string;
+    masterContext: string;
+    history: Array<{ role: string; content: string }>;
+    searchPlan: SearchQueryPlan | null;
+    searchResults: Array<{
+      title: string;
+      snippet: string;
+      source: string;
+      url: string;
+      bodyText: string;
+    }>;
+  }): Promise<SearchReflection> {
+    const systemPrompt = buildSearchReflectionSystemPrompt();
+    const userPrompt = buildSearchReflectionUserPrompt(input);
+
+    let response: Response;
+    try {
+      response = await fetchGemini(
+        `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{ text: systemPrompt }]
+            },
+            contents: toGeminiHistoryContents(input.history, userPrompt)
+          })
+        },
+        {
+          timeoutMs: GEMINI_REQUEST_TIMEOUT_MS
+        }
+      );
+    } catch {
+      return fallbackSearchReflection({
+        hasResults: input.searchResults.length > 0,
+        message: input.message,
+        reason: "검색 반사 호출 실패"
+      });
+    }
+
+    if (!response.ok) {
+      return fallbackSearchReflection({
+        hasResults: input.searchResults.length > 0,
+        message: input.message,
+        reason: "검색 반사 응답 실패"
+      });
+    }
+
+    const payload = (await response.json()) as {
+      candidates?: Array<{
+        content?: {
+          parts?: Array<{ text?: string }>;
+        };
+      }>;
+    };
+
+    try {
+      const jsonBlock = extractJsonBlock(extractText(payload));
+      const parsed = JSON.parse(jsonBlock) as SearchReflection;
+      return validateSearchReflection(parsed);
+    } catch {
+      return fallbackSearchReflection({
+        hasResults: input.searchResults.length > 0,
+        message: input.message,
+        reason: "검색 반사 파싱 실패"
+      });
     }
   }
 
@@ -293,7 +355,10 @@ export class GeminiLlmAdapter implements LlmPort {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }]
+            systemInstruction: {
+              parts: [{ text: systemPrompt }]
+            },
+            contents: toGeminiHistoryContents(input.history, userPrompt)
           })
         },
         {
@@ -341,7 +406,10 @@ export class GeminiLlmAdapter implements LlmPort {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }]
+            systemInstruction: {
+              parts: [{ text: systemPrompt }]
+            },
+            contents: [{ role: "user", parts: [{ text: userPrompt }] }]
           })
         },
         {

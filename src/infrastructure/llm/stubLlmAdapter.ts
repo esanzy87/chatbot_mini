@@ -1,7 +1,9 @@
 import type { LlmPort, PlanNextActionInput } from "@/application/ports/llm";
-import type { RouteDecision, SearchQueryPlan } from "@/domain/models";
+import type { RouteDecision, SearchQueryPlan, SearchReflection } from "@/domain/models";
 import { clampMasterContext } from "@/application/utils/masterContext";
 import type { SearchResultItem } from "@/application/ports/search";
+import { validateSearchQueryPlan } from "@/domain/policies/searchPlan";
+import { validateSearchReflection } from "@/domain/policies/searchReflection";
 
 function hasAny(message: string, keywords: string[]): boolean {
   return keywords.some((keyword) => message.includes(keyword));
@@ -83,14 +85,38 @@ export class StubLlmAdapter implements LlmPort {
     const normalized = input.message.trim().replace(/\s+/g, " ");
     const looksLatest = hasAny(normalized, ["최신", "통계", "최근", "출처", "공식"]);
 
-    return {
+    return validateSearchQueryPlan({
       searchIntent: looksLatest ? "최신 정보와 공식 근거 확인" : "질문 관련 핵심 정보 확인",
       searchQueries: [looksLatest ? `${normalized} 공식 출처` : `${normalized} 핵심 정보`, normalized],
       mustInclude: [],
       mustExclude: [],
       answerShape: looksLatest ? "latest" : "definition",
       reason: "검색어를 검색 친화적으로 재작성함"
-    };
+    });
+  }
+
+  async reflectSearchCoverage(input: {
+    message: string;
+    masterContext: string;
+    history: Array<{ role: string; content: string }>;
+    searchPlan: SearchQueryPlan | null;
+    searchResults: SearchResultItem[];
+  }): Promise<SearchReflection> {
+    if (input.searchResults.length === 0) {
+      return validateSearchReflection({
+        decision: "REFINE_SEARCH",
+        followupQuery: `${input.message.trim()} 공식`,
+        clarifyQuestion: null,
+        reason: "검색 결과가 부족해 검색어를 좁혀 재검색"
+      });
+    }
+
+    return validateSearchReflection({
+      decision: "ANSWER",
+      followupQuery: null,
+      clarifyQuestion: null,
+      reason: "답변 가능한 검색 결과가 확보됨"
+    });
   }
 
   async generateDirectAnswer(input: {

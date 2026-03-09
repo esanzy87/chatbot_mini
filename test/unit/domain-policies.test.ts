@@ -13,6 +13,8 @@ import {
 } from "@/domain/policies/toolFailure";
 import { isValidSourceItem, normalizeSources } from "@/domain/policies/sources";
 import { toReasonSummary } from "@/domain/policies/reasonSummaryDomain";
+import { fallbackSearchQueryPlan, validateSearchQueryPlan } from "@/domain/policies/searchPlan";
+import { fallbackSearchReflection, validateSearchReflection } from "@/domain/policies/searchReflection";
 
 function baseDecision(overrides?: Partial<RouteDecision>): RouteDecision {
   return {
@@ -41,14 +43,38 @@ describe("domain/routeDecision", () => {
 
   it("forces ASK_CLARIFY when confidence is below threshold", () => {
     const fallback = applyConfidenceFallback(baseDecision({ nextAction: "DIRECT_ANSWER", confidence: 0.54 }));
-    expect(fallback.nextAction).toBe("ASK_CLARIFY");
-    expect(fallback.allowedTools).toEqual([]);
+    expect(fallback.nextAction).toBe("DIRECT_ANSWER");
   });
 
   it("keeps route decision when confidence is enough", () => {
     const original = baseDecision({ confidence: 0.55 });
     const result = applyConfidenceFallback(original);
     expect(result).toEqual(original);
+  });
+
+  it("keeps low-confidence search tool call instead of degrading to clarify", () => {
+    const result = applyConfidenceFallback(
+      baseDecision({
+        nextAction: "CALL_TOOL",
+        allowedTools: ["search"],
+        confidence: 0.2
+      })
+    );
+
+    expect(result.nextAction).toBe("CALL_TOOL");
+  });
+
+  it("downgrades generic high-confidence ASK_CLARIFY to DIRECT_ANSWER", () => {
+    const result = applyConfidenceFallback(
+      baseDecision({
+        nextAction: "ASK_CLARIFY",
+        allowedTools: [],
+        clarifyQuestion: "질문 의도를 더 구체적으로 알려주세요.",
+        confidence: 0.8
+      })
+    );
+
+    expect(result.nextAction).toBe("DIRECT_ANSWER");
   });
 });
 
@@ -176,5 +202,77 @@ describe("domain/reasonSummaryDomain", () => {
   it("hard normalization still applies after sentence limiting", () => {
     const result = toReasonSummary("system prompt. developer message. internal reasoning.");
     expect(result).toContain("[REDACTED_REASON]");
+  });
+});
+
+describe("domain/searchPlan", () => {
+  it("validates and normalizes search query plan", () => {
+    const result = validateSearchQueryPlan({
+      searchIntent: " 최신 통계 확인 ",
+      searchQueries: ["  Berkeley biology latest stats  ", "  biology berkeley official "],
+      mustInclude: [" official "],
+      mustExclude: [" blog "],
+      answerShape: "latest",
+      reason: " 검색어 재작성 "
+    });
+
+    expect(result.searchIntent).toBe("최신 통계 확인");
+    expect(result.searchQueries[0]).toBe("Berkeley biology latest stats");
+    expect(result.mustInclude).toEqual(["official"]);
+    expect(result.mustExclude).toEqual(["blog"]);
+  });
+
+  it("rejects empty search query list", () => {
+    expect(() =>
+      validateSearchQueryPlan({
+        searchIntent: "검색",
+        searchQueries: [],
+        mustInclude: [],
+        mustExclude: [],
+        answerShape: "definition",
+        reason: "빈 쿼리"
+      })
+    ).toThrowError(/SEARCH_PLAN_QUERIES_INVALID/);
+  });
+
+  it("builds fallback search query plan", () => {
+    const result = fallbackSearchQueryPlan("최신 통계 알려줘", "플래너 파싱 실패");
+    expect(result.searchQueries).toEqual(["최신 통계 알려줘"]);
+    expect(result.answerShape).toBe("definition");
+  });
+});
+
+describe("domain/searchReflection", () => {
+  it("validates refine_search reflection", () => {
+    const result = validateSearchReflection({
+      decision: "REFINE_SEARCH",
+      followupQuery: "berkeley biology official statistics",
+      clarifyQuestion: null,
+      reason: "검색어를 좁혀 재검색"
+    });
+
+    expect(result.followupQuery).toBe("berkeley biology official statistics");
+    expect(result.clarifyQuestion).toBeNull();
+  });
+
+  it("rejects missing followup query for refine_search", () => {
+    expect(() =>
+      validateSearchReflection({
+        decision: "REFINE_SEARCH",
+        followupQuery: null,
+        clarifyQuestion: null,
+        reason: "재검색"
+      })
+    ).toThrowError(/SEARCH_REFLECTION_FOLLOWUP_QUERY_INVALID/);
+  });
+
+  it("falls back to ANSWER when results exist", () => {
+    const result = fallbackSearchReflection({
+      hasResults: true,
+      message: "질문",
+      reason: "파싱 실패"
+    });
+
+    expect(result.decision).toBe("ANSWER");
   });
 });

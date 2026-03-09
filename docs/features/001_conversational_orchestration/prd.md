@@ -80,7 +80,7 @@
 - `ASK_CLARIFY` fallback 정책 조정
 - Gemini 입력에서 role 기반 multi-turn 전달 방식 개선
 - 검색 답변 프롬프트를 대화형 응답 중심으로 수정
-- reasoning trace에 검색 계획/재판단 요약을 안전한 수준에서 반영할지 검토
+- 기존 reasoning trace 문자열에 검색 계획/재판단 요약을 안전한 수준에서 합성 반영
 
 ### Out of scope
 

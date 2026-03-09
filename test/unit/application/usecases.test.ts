@@ -117,6 +117,40 @@ describe("HandleChatTurnUseCase", () => {
     expect(out.routeDecision.nextAction).toBe("CALL_TOOL");
     expect(out.routeDecision.allowedTools).toEqual(["search"]);
   });
+
+  it("keeps low-confidence DIRECT_ANSWER instead of forcing ASK_CLARIFY", async () => {
+    const llmPort = {
+      planNextAction: vi.fn(async () => ({
+        nextAction: "DIRECT_ANSWER",
+        allowedTools: [],
+        confidence: 0.2,
+        reason: "설명 가능"
+      }))
+    };
+
+    const sessionRepository = {
+      getSession: vi.fn(async () => ({
+        sessionId: "sess_01HW8K4X4X5N9F3D1E7Q2R6M8P",
+        masterContext: "master",
+        masterContextSummary: "summary",
+        createdAt: "2026-03-07T10:00:00.000Z",
+        consecutiveToolFailureTurns: 0
+      }))
+    };
+
+    const messageRepository = {
+      listMessages: vi.fn(async () => [])
+    };
+
+    const useCase = new HandleChatTurnUseCase(llmPort as never, sessionRepository as never, messageRepository as never);
+    const out = await useCase.execute({
+      sessionId: "sess_01HW8K4X4X5N9F3D1E7Q2R6M8P",
+      message: "생명과학과 생명공학 차이 알려줘",
+      needsSources: false
+    });
+
+    expect(out.routeDecision.nextAction).toBe("DIRECT_ANSWER");
+  });
 });
 
 describe("RunToolUseCase", () => {

@@ -26,6 +26,24 @@ type SearchPlannerPromptInput = {
   history: Array<{ role: string; content: string }>;
 };
 
+type SearchReflectionPromptInput = {
+  message: string;
+  masterContext: string;
+  history: Array<{ role: string; content: string }>;
+  searchPlan: {
+    searchIntent: string;
+    searchQueries: string[];
+    answerShape: string;
+  } | null;
+  searchResults: Array<{
+    title: string;
+    url: string;
+    source: string;
+    snippet: string;
+    bodyText: string;
+  }>;
+};
+
 type MemoryPromptInput = {
   masterContext: string;
   history: Array<{ role: string; content: string }>;
@@ -66,7 +84,8 @@ export function buildRouterSystemPrompt(): string {
     "- search와 transform이 모두 필요해 보이더라도 MVP에서는 한 턴에 가장 우선순위가 높은 도구만 허용해라.",
     "",
     "[질문 처리 원칙]",
-    "- 맥락이 중요한 진로상담, 계획 수립, 비교 분석 요청은 정보가 부족하면 ASK_CLARIFY를 적극 활용해라.",
+    "- 맥락이 중요한 질문이라도, 안전한 범위의 초안 답변이나 search 시도가 가능하면 ASK_CLARIFY보다 먼저 진행해라.",
+    "- ASK_CLARIFY는 답변 품질이 크게 무너질 때만 마지막 수단처럼 사용해라.",
     "- 사용자가 이미 충분한 조건을 줬다면 불필요하게 되묻지 말고 DIRECT_ANSWER 또는 필요한 CALL_TOOL로 진행해라.",
     "- 학생부 세특, 탐구, 보고서 같은 학습 지원 요청은 구조 조언과 방향 제시는 허용되지만, 완성본 대필 요청은 REFUSE다.",
     "",
@@ -117,7 +136,8 @@ export function buildChatSystemPrompt(): string {
     "",
     "[응답 품질]",
     "- 사용자가 바로 실행할 수 있는 다음 단계, 체크포인트, 선택 기준을 제시한다.",
-    "- 질문이 모호하면 추측하지 말고 짧고 명확한 추가 질문으로 좁힌다.",
+    "- 질문이 다소 모호해도 안전한 범위의 가정을 밝히고 먼저 도움이 되는 초안 답변을 제공한다.",
+    "- 정말 필요한 경우에만 마지막 문장에서 짧고 명확한 추가 질문 1개로 좁힌다.",
     "- 세션 컨텍스트와 최근 대화를 반영한다.",
     "- 답변은 필요 이상으로 장황하지 않게 쓴다."
   ].join("\n");
@@ -127,9 +147,6 @@ export function buildChatUserPrompt(input: ChatPromptInput): string {
   return [
     "[세션 컨텍스트]",
     input.masterContext,
-    "",
-    "[최근 대화]",
-    formatHistory(input.history, 8),
     "",
     "[이번 사용자 메시지]",
     input.message,
@@ -176,9 +193,6 @@ export function buildSearchAnswerUserPrompt(input: SearchAnswerPromptInput): str
     "[세션 컨텍스트]",
     input.masterContext,
     "",
-    "[최근 대화]",
-    formatHistory(input.history, 8),
-    "",
     "[이번 사용자 메시지]",
     input.message,
     "",
@@ -210,13 +224,62 @@ export function buildSearchPlannerUserPrompt(input: SearchPlannerPromptInput): s
     "[세션 컨텍스트]",
     input.masterContext,
     "",
-    "[최근 대화]",
-    formatHistory(input.history, 6),
-    "",
     "[이번 사용자 메시지]",
     input.message,
     "",
     "위 정보를 바탕으로 검색 계획 JSON을 작성해라."
+  ].join("\n");
+}
+
+export function buildSearchReflectionSystemPrompt(): string {
+  return [
+    "너는 검색 결과 검토기다.",
+    "검색 결과가 사용자 질문에 충분한지 판단하고, 답변할지 재검색할지 추가질문할지만 JSON으로 결정해라.",
+    "반드시 아래 JSON 하나만 출력해라.",
+    '{"decision":"ANSWER|REFINE_SEARCH|ASK_CLARIFY","followupQuery":string|null,"clarifyQuestion":string|null,"reason":string}',
+    "",
+    "[판정 원칙]",
+    "- 이미 답변 가능한 핵심 근거가 있으면 ANSWER를 우선한다.",
+    "- 결과가 부족하지만 검색어를 더 좁히거나 바꾸면 해결 가능하면 REFINE_SEARCH를 선택한다.",
+    "- 검색어를 바꿔도 해결이 어렵고 사용자 조건이 정말 부족할 때만 ASK_CLARIFY를 선택한다.",
+    "- reason은 한국어 한 문장으로 짧게 작성해라."
+  ].join("\n");
+}
+
+export function buildSearchReflectionUserPrompt(input: SearchReflectionPromptInput): string {
+  const formattedResults =
+    input.searchResults.length > 0
+      ? input.searchResults
+          .slice(0, 5)
+          .map((item, index) =>
+            [
+              `[문서 ${index + 1}]`,
+              `제목: ${item.title}`,
+              `URL: ${item.url}`,
+              `source: ${item.source}`,
+              `snippet: ${item.snippet}`,
+              `본문 발췌: ${item.bodyText}`
+            ].join("\n")
+          )
+          .join("\n\n")
+      : "[문서 없음]";
+
+  return [
+    "[세션 컨텍스트]",
+    input.masterContext,
+    "",
+    "[이번 사용자 메시지]",
+    input.message,
+    "",
+    "[검색 계획 요약]",
+    input.searchPlan
+      ? `intent=${input.searchPlan.searchIntent}\nqueries=${input.searchPlan.searchQueries.join(" | ")}\nanswerShape=${input.searchPlan.answerShape}`
+      : "검색 계획 없음",
+    "",
+    "[검색 결과]",
+    formattedResults,
+    "",
+    "위 정보를 바탕으로 다음 행동 JSON을 결정해라."
   ].join("\n");
 }
 

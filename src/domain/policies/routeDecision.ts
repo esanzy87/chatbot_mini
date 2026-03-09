@@ -1,6 +1,7 @@
 import type { AllowedTool, ForceSourceMode, RouteDecision } from "@/domain/models";
 
 const ALLOWED_TOOLS: AllowedTool[] = ["search", "transform"];
+const GENERIC_CLARIFY_PATTERNS = ["질문 의도", "더 구체", "조금만 더", "구체적으로 알려"];
 
 export function validateRouteDecision(input: RouteDecision): RouteDecision {
   if (input.nextAction === "CALL_TOOL") {
@@ -41,7 +42,25 @@ export function validateRouteDecision(input: RouteDecision): RouteDecision {
 }
 
 export function applyConfidenceFallback(input: RouteDecision): RouteDecision {
+  if (input.nextAction === "ASK_CLARIFY") {
+    const clarifyQuestion = (input.clarifyQuestion ?? "").trim();
+    const isGenericClarify = GENERIC_CLARIFY_PATTERNS.some((pattern) => clarifyQuestion.includes(pattern));
+
+    if (input.confidence >= 0.55 && isGenericClarify) {
+      return {
+        nextAction: "DIRECT_ANSWER",
+        allowedTools: [],
+        confidence: input.confidence,
+        reason: `${input.reason} | 과도한 일반 clarify를 direct answer로 완화`
+      };
+    }
+  }
+
   if (input.confidence >= 0.55) {
+    return input;
+  }
+
+  if (input.nextAction === "CALL_TOOL" || input.nextAction === "DIRECT_ANSWER") {
     return input;
   }
 

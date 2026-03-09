@@ -1,4 +1,4 @@
-import type { NextAction, RouteDecision, SearchQueryPlan } from "@/domain/models";
+import type { NextAction, RouteDecision, SearchQueryPlan, SearchReflection } from "@/domain/models";
 import type { SearchResultItem } from "@/application/ports/search";
 
 export type TokenStreamCallback = (delta: string) => void;
@@ -18,6 +18,13 @@ export interface LlmPort {
     masterContext: string;
     history: Array<{ role: string; content: string }>;
   }): Promise<SearchQueryPlan>;
+  reflectSearchCoverage(input: {
+    message: string;
+    masterContext: string;
+    history: Array<{ role: string; content: string }>;
+    searchPlan: SearchQueryPlan | null;
+    searchResults: SearchResultItem[];
+  }): Promise<SearchReflection>;
   generateDirectAnswer(input: {
     message: string;
     masterContext: string;
