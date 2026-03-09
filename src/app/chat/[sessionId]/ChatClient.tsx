@@ -119,33 +119,32 @@ export default function ChatClient({ sessionId }: { sessionId: string }) {
 
     setInput("");
 
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        sessionId,
-        message: text,
-        clientOptions: {
-          needsSources,
-          debug
-        }
-      })
-    });
-
-    if (!res.ok || !res.body) {
-      const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-      setErrorText(body?.error?.message ?? "채팅 요청에 실패했습니다.");
-      setLoading(false);
-      return;
-    }
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder("utf-8");
-    let buffer = "";
-
     try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          sessionId,
+          message: text,
+          clientOptions: {
+            needsSources,
+            debug
+          }
+        })
+      });
+
+      if (!res.ok || !res.body) {
+        const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        setErrorText(body?.error?.message ?? "채팅 요청에 실패했습니다.");
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
@@ -229,6 +228,8 @@ export default function ChatClient({ sessionId }: { sessionId: string }) {
           }
         }
       }
+    } catch {
+      setErrorText("응답 생성 중 네트워크 또는 서버 오류가 발생했습니다.");
     } finally {
       setLoading(false);
       void loadTraces();

@@ -77,6 +77,27 @@ describe("StubLlmAdapter", () => {
     expect(updated).toContain("[상담 메모]");
     expect(updated).toContain("핵심 고민");
   });
+
+  it("builds search answer from collected body texts", async () => {
+    const adapter = new StubLlmAdapter();
+    const answer = await adapter.generateSearchAnswer({
+      message: "생명과학과 생명공학 차이를 알려줘",
+      masterContext: "학습 세션",
+      history: [],
+      searchResults: [
+        {
+          title: "문서 1",
+          snippet: "요약 1",
+          source: "stub-search",
+          url: "https://example.com/1",
+          bodyText: "생명과학은 기초 원리를 다루고, 생명공학은 응용 기술과 산업 활용에 더 가깝습니다."
+        }
+      ]
+    });
+
+    expect(answer).toContain("출처:");
+    expect(answer).toContain("문서 1");
+  });
 });
 
 describe("GeminiLlmAdapter", () => {
@@ -161,18 +182,25 @@ describe("search/transform adapters", () => {
   });
 
   it("forwards abort signal when Tavily adapter is called with options", async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        results: [{ title: "문서", url: "https://example.com/doc", content: "요약" }]
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [{ title: "문서", url: "https://example.com/doc", content: "요약" }]
+        })
       })
-    });
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers({ "content-type": "text/html" }),
+        text: async () => "<html><body><main>문서 본문 내용</main></body></html>"
+      });
 
     const adapter = new TavilySearchAdapter("key");
     const controller = new AbortController();
     const result = await adapter.search({ query: "langgraph", topK: 1 }, { signal: controller.signal });
 
     expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.bodyText).toContain("문서 본문 내용");
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.signal).toBe(controller.signal);
   });

@@ -2,10 +2,11 @@
 
 ## 상태 요약
 - 검증 기준 문서: `docs/features/0_bootstrap/initial_spec.md` v0.34
-- 검증 일시: 2026-03-08
+- 검증 일시: 2026-03-09
 - 기본 모드(stub): 완료
 - live 모드(실키): API 키 미제공 환경에서는 smoke test skip
-- 회귀 테스트 최신 결과: `150 passed`, `2 skipped`
+- 회귀 테스트 최신 결과: `npm run test`는 현재 실패
+- 실패 원인: `node:sqlite` import가 Vite 환경에서 번들되지 않아 통합 스위트 로드 실패
 
 ## 항목별 결과
 
@@ -30,8 +31,11 @@
 - 근거: `test/integration/reason-summary-exposure.test.ts`, `test/ui/chat-client.test.tsx`
 
 6. DOD-006 API 키 없이 stub 검증
-- 상태: 완료
-- 근거: `npm run test` green (`integration:live` 2건 skip)
+- 상태: 부분 완료
+- 근거:
+  - `npm run typecheck` 성공
+  - `test/unit/infrastructure/adapters.test.ts`, `test/unit/application/usecases.test.ts`, `test/ui/chat-client.test.tsx` 성공
+  - 전체 `npm run test`는 `node:sqlite` 번들링 이슈로 실패
 
 7. DOD-007 성능 목표 기록(stub/live p95)
 - 상태: 부분 완료
@@ -47,8 +51,9 @@
 - 근거: `test/integration/dod-regression.test.ts` (`meets routing quality targets on 50-sample labeled set`)
 
 10. DOD-010 최종 릴리스 체크리스트
-- 상태: 완료(기본 stub 릴리스 기준)
+- 상태: 부분 완료
 - 근거:
   - 테스트/커버리지: [test_report.md](/home/ubuntu/projects/chatbot_mini/docs/features/0_bootstrap/test_report.md)
   - API/DB 문서: [api_contract.md](/home/ubuntu/projects/chatbot_mini/docs/features/0_bootstrap/api_contract.md), [db_schema.md](/home/ubuntu/projects/chatbot_mini/docs/features/0_bootstrap/db_schema.md)
   - 운영 가이드: [runbook.md](/home/ubuntu/projects/chatbot_mini/docs/runbook.md)
+  - 단, 전체 테스트 러너 구성 이슈가 남아 있어 최종 릴리스 완료로 단정하지 않음

@@ -1,4 +1,7 @@
 import type { NextAction, RouteDecision } from "@/domain/models";
+import type { SearchResultItem } from "@/application/ports/search";
+
+export type TokenStreamCallback = (delta: string) => void;
 
 export type PlanNextActionInput = {
   sessionId: string;
@@ -14,6 +17,16 @@ export interface LlmPort {
     message: string;
     masterContext: string;
     history: Array<{ role: string; content: string }>;
+    onToken?: TokenStreamCallback;
+    abortSignal?: AbortSignal;
+  }): Promise<string>;
+  generateSearchAnswer(input: {
+    message: string;
+    masterContext: string;
+    history: Array<{ role: string; content: string }>;
+    searchResults: SearchResultItem[];
+    onToken?: TokenStreamCallback;
+    abortSignal?: AbortSignal;
   }): Promise<string>;
   suggestMasterContextUpdate(input: {
     masterContext: string;

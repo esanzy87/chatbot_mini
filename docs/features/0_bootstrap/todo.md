@@ -128,7 +128,7 @@
 - [x] `GRAPH-004` `planNextAction` 노드 구현(입력에 `forceSourceMode` 포함). | DoD: 라우팅 결정 결과가 상태에 저장.
 - [x] `GRAPH-005` `directAnswer` 노드 구현. | DoD: 도구 호출 없이 최종 메시지 생성.
 - [x] `GRAPH-006` `askClarify` 노드 구현. | DoD: `clarifyQuestion` 기반 메시지 반환.
-- [x] `GRAPH-007` `refuse` 노드 구현(학습코치형 톤). | DoD: 거절+대안 메시지 포맷 테스트 통과.
+- [x] `GRAPH-007` `refuse` 노드 구현(일반 존댓말 톤). | DoD: 거절+대안 메시지 포맷 테스트 통과.
 - [x] `GRAPH-008` `callModelWithTools` 노드 구현. | DoD: tool call 포함 모델 응답 처리.
 - [x] `GRAPH-009` `toolNode` 구현(allowlist 재검증 + zod 검증 + timeout). | DoD: 비허용 도구 호출 차단 테스트 통과.
 - [x] `GRAPH-010` 도구 루프 최대 2회 정책 구현. | DoD: 3회째 진입 방지 테스트 통과.
@@ -208,7 +208,7 @@
 ## 18. 보안/가드레일/로깅 구현
 - [x] `SEC-001` 서버 측 도구 allowlist 재검증(실행 직전) 구현. | DoD: 비허용 toolName 차단 테스트 통과.
 - [x] `SEC-002` 모든 도구 인자 zod 검증(실행 전) 구현. | DoD: 스키마 위반 요청 실행 차단.
-- [x] `SEC-003` `REFUSE` 정책 메시지 템플릿(학습코치형 대안 포함) 구현. | DoD: 부정행위 요청 응답 품질 테스트 통과.
+- [x] `SEC-003` `REFUSE` 정책 메시지 템플릿(일반 존댓말 대안 포함) 구현. | DoD: 부정행위 요청 응답 품질 테스트 통과.
 - [x] `SEC-004` 로그 기록 직전 PII 마스킹 파이프라인 적용 구현. | DoD: 로그 스냅샷에 원문 이메일/전화번호 미노출.
 - [x] `SEC-005` 최소 로그 필드(`requestId,sessionId,nextAction,toolName,ok,latencyMs`) 고정 출력 구현. | DoD: 성공/실패 로그 샘플 점검 통과.
 - [x] `SEC-006` `RouteDecision.reason` raw 원문 비저장/비응답 정책 강제 구현. | DoD: DB/API 어디에도 raw reason 없음.

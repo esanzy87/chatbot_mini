@@ -4,7 +4,9 @@ export type SearchExecutor = {
   search(args: {
     query: string;
     topK: number;
-  }, options?: { signal?: AbortSignal }): Promise<{ items: Array<{ title: string; snippet: string; url: string; source: string }> }>;
+  }, options?: { signal?: AbortSignal }): Promise<{
+    items: Array<{ title: string; snippet: string; url: string; source: string; bodyText: string }>;
+  }>;
 };
 
 export type TransformExecutor = {
@@ -23,7 +25,9 @@ export class ToolPortAdapter implements SearchPort {
   async search(args: {
     query: string;
     topK: number;
-  }, options?: { signal?: AbortSignal }): Promise<{ items: Array<{ title: string; snippet: string; url: string; source: string }> }> {
+  }, options?: { signal?: AbortSignal }): Promise<{
+    items: Array<{ title: string; snippet: string; url: string; source: string; bodyText: string }>;
+  }> {
     return await this.searchExecutor.search(args, options);
   }
 

@@ -2,9 +2,9 @@
 
 Next.js + LangGraph 기반 최소 오케스트레이션 챗봇 MVP.
 
-현재 기본 챗봇 퍼소나는 `샛별(Saetbyul)`이다.
-- 한국인 UC버클리 Life Science 전공 1학년 선배 캐릭터
-- 한국어 반말, 밝고 현실적인 진로/학습 코칭 톤
+현재 기본 챗봇은 특정 인물 페르소나 없이 동작한다.
+- 한국어로 응답하는 일반 목적 AI 챗봇
+- 친절하고 명확한 존댓말 톤
 - 완성본 대필 대신 방향 설계와 구조화된 도움을 우선
 - 진로상담에서 3~5턴 정도 누적해 파악한 핵심 맥락은 세션 `masterContext`에 메모로 축적되어 다음 턴 프롬프트에 재사용된다
 
@@ -40,6 +40,8 @@ TAVILY_API_KEY=your_tavily_key
 npm run typecheck
 npm run test
 ```
+
+현재 워크스페이스에서는 `npm run test`가 `node:sqlite`의 Vite 번들링 문제로 실패할 수 있다. 최근 확인 기준으로는 `npm run typecheck`와 주요 unit/UI 테스트가 통과했다.
 
 ## API
 - `POST /api/sessions`

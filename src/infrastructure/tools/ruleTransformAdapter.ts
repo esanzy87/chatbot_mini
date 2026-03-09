@@ -30,8 +30,8 @@ export class RuleTransformAdapter {
     }
 
     return {
-      resultText: `안녕하세요. 좋아, 발표할 때는 이런 흐름으로 풀면 자연스러워!\n\n${base}`,
-      appliedRules: ["format=presentation_script", "tone=casual"]
+      resultText: `안녕하세요. 발표는 아래 흐름으로 구성하면 자연스럽습니다.\n\n${base}`,
+      appliedRules: ["format=presentation_script", "tone=neutral"]
     };
   }
 }

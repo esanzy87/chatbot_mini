@@ -3,6 +3,7 @@ export type SearchResultItem = {
   snippet: string;
   source: string;
   url: string;
+  bodyText: string;
 };
 
 export type ToolCallOptions = {

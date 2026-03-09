@@ -26,6 +26,9 @@
 - `content TEXT NOT NULL`
 - `metadata TEXT NOT NULL DEFAULT '{}'`
 - `created_at TEXT NOT NULL`
+- 사용 메모:
+  - 현재 애플리케이션 계층은 `user|ai`만 저장한다.
+  - `tool|system`은 스키마 상 허용값이지만 현행 코드 경로에서는 append 하지 않는다.
 
 ### `tool_executions`
 - `id TEXT PRIMARY KEY` (ULID)
@@ -56,5 +59,6 @@
 
 ## 트랜잭션 규칙
 - `createSession`: `sessions + master_contexts` 원자 저장
-- `finalizeTurn`: `messages + tool_executions + decision_traces + sessions(updated_at/counter)` 원자 저장
+- `finalizeTurn`: `messages + tool_executions + decision_traces + sessions(updated_at/counter) + master_contexts(선택)` 원자 저장
+- `updateMasterContext`: `master_contexts + sessions(updated_at)` 원자 저장
 - 트랜잭션 시작: `BEGIN IMMEDIATE`

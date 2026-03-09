@@ -10,7 +10,7 @@
 - 도구 2종(`search`, `transform`)이 allowlist + 스키마 검증 하에서만 실행된다.
 - 도구 실패 시 사용자 fallback 응답이 보장된다.
 - 세션별 `MasterContext`가 매 턴 라우팅/답변 생성에 반영된다.
-- 답변 생성 경로는 `샛별(Saetbyul)` 퍼소나와 한국어 반말 톤을 일관되게 유지한다.
+- 답변 생성 경로는 특정 인물 퍼소나 없이 일반적인 AI 챗봇 톤을 유지한다.
 - 클린 아키텍처 + 의존성역전(DIP) 구조에서 도메인/애플리케이션 계층이 인프라 구현체에 직접 의존하지 않는다.
 - UI에서 "사고 과정 보기" 토글로 턴별 의사결정 요약(행동, 이유, 도구 실행 로그)을 확인할 수 있다.
 - `GEMINI_API_KEY`, `TAVILY_API_KEY`가 없어도 stub 기반 단위 테스트와 핵심 시나리오 검증이 가능하다.
@@ -57,9 +57,9 @@
 - 모델 공급자: Gemini (`GEMINI_API_KEY` 사용).
 - 프런트: `/chat/[sessionId]` 단일 페이지.
 - UI 언어: 한국어 고정.
-- 챗봇 퍼소나: `샛별(Saetbyul)` 고정
-  - 토종 한국인, 어학 연수/고액 컨설팅 없이 UC버클리 Life Science 전공 학부 1학년 합격/재학 중인 선배 캐릭터
-  - 활기차고 친근한 반말 톤으로 진로/학습 고민을 돕는다
+- 챗봇 스타일: 특정 인물 퍼소나 없이 동작
+  - 한국어로 응답하는 일반 목적 AI 챗봇
+  - 친절하고 명확한 존댓말 톤으로 진로/학습 고민을 돕는다
 - 백엔드 엔드포인트:
   - `POST /api/sessions`
   - `GET /api/sessions/{sessionId}`
@@ -107,10 +107,11 @@
 4. `planNextAction` 노드가 `forceSourceMode`를 입력으로 받아 구조화 출력 `RouteDecision` 생성.
 5. 조건 분기:
    - `DIRECT_ANSWER`: 답변 생성 후 종료.
-   - `CALL_TOOL`: 서버 결정적 도구 선택(`allowedTools` 기반) -> 도구 실행 -> 동일 턴 재시도 루프(최대 2회).
+   - `CALL_TOOL`: 서버 결정적 도구 선택(`allowedTools` 기반) -> 도구 실행 -> 검색 도구인 경우 링크 본문 수집 후 교육형 답변 생성 -> 동일 턴 재시도 루프(최대 2회).
    - `ASK_CLARIFY`: 추가 질문 반환 후 종료.
    - `REFUSE`: 거절 + 대안 반환 후 종료.
 6. 결과를 SSE로 스트리밍하여 UI에 표시.
+   - `DIRECT_ANSWER` 및 검색 후 최종 답변 생성 단계는 모델 토큰 delta를 `event: token`으로 즉시 전달한다.
 
 ### 5.2 그래프 노드
 - `loadSessionContext`
@@ -120,6 +121,10 @@
 - `refuse`
 - `callModelWithTools`
   - 역할: `allowedTools`/요청 문맥을 입력으로 이번 루프에서 실행할 단일 도구와 인자를 서버에서 결정
+  - `search` 경로:
+    - 검색 결과 목록 확보
+    - 각 결과 링크 본문 확인
+    - 수집한 본문을 근거로 최종 요약 답변 생성
   - 주의: MVP v0.34는 모델 raw `tool_calls`를 직접 파싱/재호출하지 않으며, 해당 패턴은 후속 버전 확장 항목으로 둔다.
 - `toolNode`
 - `finalize`
@@ -179,10 +184,9 @@
   - 채팅 세션 응답용 시스템 프롬프트
   - `planNextAction` 라우터용 시스템 프롬프트
 - 채팅 세션 응답 프롬프트 규칙:
-  - `샛별` 퍼소나를 유지한다.
-  - 한국어만 사용하고, 아주 친근한 반말을 사용한다.
-  - 감정 표현용 이모지(`✨`, `😆`, `🥺`)는 자연스럽게만 사용한다.
-  - AI 비서처럼 딱딱한 서비스 문구는 지양한다.
+  - 특정 인물 퍼소나를 연기하지 않는다.
+  - 한국어만 사용하고, 친절하고 명확한 존댓말을 사용한다.
+  - 이모지는 사용하지 않는다.
   - 진로/학습 상담은 사용자의 숨은 맥락을 3~5턴 안에서 파악하는 소크라틱 대화를 우선한다.
   - 세특/탐구/보고서 요청은 교육적 경로 설계를 돕되, 제출물 완성본 대필은 금지한다.
 - 라우터 프롬프트 규칙:
@@ -194,6 +198,11 @@
 - 프롬프트 비노출 규칙:
   - 시스템 프롬프트 원문은 DB, API, reasoning trace, debug payload에 저장/노출하지 않는다.
   - 프롬프트 관련 문자열은 `reasonSummary` 정규화 규칙으로 마스킹 대상에 포함된다.
+- 검색 후 답변 생성 규칙:
+  - `CALL_TOOL(search)` 후에는 검색 결과 제목 나열만으로 종료하지 않는다.
+  - 서버는 확보한 링크 본문을 읽고, 그 내용을 바탕으로 교육적으로 정리된 최종 응답을 생성한다.
+  - 최종 응답에는 `sources` 배열로 출처를 포함한다.
+  - 단, 검색 후 답변 생성 단계에서 모델 제공자 오류가 발생하면 제목 목록 기반의 축약 응답으로 fallback할 수 있다.
 
 ### 5.7 MasterContext 메모리 정책
 - 기본 `MasterContext`는 세션 생성 시 입력된다.
@@ -486,6 +495,10 @@ type ReasoningTrace = {
 ```json
 { "turnId": "turn_01HW8K6K8C8Q4A9R9N4V2N7Q3M", "delta": "부분 텍스트" }
 ```
+- 전송 규칙:
+  - 실제 모델 생성 중 발생하는 delta를 순서대로 전송하는 것을 우선한다.
+  - 단, 모델 스트리밍이 없는 경로에서는 최종 텍스트 전체를 단일 `token` 이벤트로 전송할 수 있다.
+  - 최종 `event: message.text`는 누적 완료된 전체 텍스트와 일치해야 한다.
 - `event: tool`
 ```json
 {
@@ -536,6 +549,7 @@ type ReasoningTrace = {
   - `title`: 문자열, `trim()` 기준 1~120자
   - `url`: 절대 URL, `http|https` 스킴만 허용
   - `source`: 문자열, 1~40자, 정규식 `^[a-z0-9_-]+$`
+  - 검색 도구 내부 결과에는 위 필드 외 `bodyText`를 포함할 수 있으며, 이는 최종 답변 생성용 내부 데이터로 사용한다.
 - `sources` 배열 규칙
   - 최대 5개
   - 동일 `url` 문자열 중복 금지
@@ -685,7 +699,7 @@ x-internal-tool-token: <INTERNAL_TOOL_TOKEN>
 ```json
 {
   "resultText": "변환 결과",
-  "appliedRules": ["tone=formal", "length=short"]
+  "appliedRules": ["format=presentation_script", "tone=neutral"]
 }
 ```
 - 검증/에러 규칙
@@ -1007,6 +1021,7 @@ x-internal-tool-token: <INTERNAL_TOOL_TOKEN>
   - `tool_executions.ok IN (0,1)` 체크
   - `tool_executions.latency_ms >= 0` 체크
   - `messages.role` 체크(`user|ai|tool|system`)
+  - 현재 애플리케이션 계층이 실제로 append 하는 역할은 `user|ai`
 - 인덱스(최소):
   - `idx_messages_session_created_at (session_id, created_at)`
   - `idx_tool_exec_session_turn (session_id, turn_id)`
@@ -1066,7 +1081,7 @@ x-internal-tool-token: <INTERNAL_TOOL_TOKEN>
 - `/api/tools/*`는 내부 오케스트레이션 전용이며 `x-internal-tool-token` 검증 실패 시 차단한다.
 - `REFUSE` 정책:
   - 제출용 답안 대필, 부정행위 조장 요청은 거절.
-  - 학습코치형 톤으로 대안(개요, 힌트, 학습 가이드) 제공.
+  - 일반적인 한국어 존댓말 톤으로 대안(개요, 힌트, 학습 가이드) 제공.
 - 운영 전제:
   - `SESSION_BUSY` 정책 정확성을 위해 MVP 운영은 단일 Node.js 인스턴스(프로세스 1)로 제한한다.
   - 수평 확장(멀티 인스턴스) 시 분산 락/세션 조정 메커니즘 도입 전까지 `SESSION_BUSY` 보장을 주장하지 않는다.

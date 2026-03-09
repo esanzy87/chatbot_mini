@@ -150,6 +150,7 @@ export async function POST(request: Request): Promise<Response> {
       let closed = false;
       const t0 = Date.now();
       const tracker = new SseEventTracker();
+      let tokenEmitted = false;
 
       const write = (eventName: "token" | "tool" | "message" | "error" | "done", payload: unknown) => {
         if (closed) {
@@ -190,6 +191,10 @@ export async function POST(request: Request): Promise<Response> {
               abortSignal: request.signal,
               isAborted: () => request.signal.aborted,
               now: () => Date.now(),
+              emitToken: (payload) => {
+                tokenEmitted = true;
+                write("token", payload);
+              },
               emitToolEvent: (payload) => {
                 write("tool", payload);
                 if (payload.phase === "success") {
@@ -249,7 +254,7 @@ export async function POST(request: Request): Promise<Response> {
             return;
           }
 
-          if (result.finalText.length > 0) {
+          if (!tokenEmitted && result.finalText.length > 0) {
             write("token", {
               turnId,
               delta: result.finalText

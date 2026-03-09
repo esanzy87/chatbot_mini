@@ -33,6 +33,7 @@ export type ChatGraphDeps = {
   searchPort: SearchPort;
   repository: ChatTurnRepository;
   emitToolEvent: (payload: ToolEventPayload) => void;
+  emitToken: (payload: { turnId: string; delta: string }) => void;
   abortSignal?: AbortSignal;
   isAborted: () => boolean;
   now: () => number;
@@ -259,7 +260,13 @@ function buildGraph(deps: ChatGraphDeps) {
         const text = await deps.llmPort.generateDirectAnswer({
           message: state.userMessage,
           masterContext: state.masterContext,
-          history: state.history
+          history: state.history,
+          ...(deps.abortSignal ? { abortSignal: deps.abortSignal } : {}),
+          onToken: (delta) => {
+            if (!deps.isAborted()) {
+              deps.emitToken({ turnId: state.turnId, delta });
+            }
+          }
         });
 
         return {
@@ -280,7 +287,7 @@ function buildGraph(deps: ChatGraphDeps) {
       const routeDecision = assertRouteDecision(state.routeDecision);
 
       return {
-        finalText: routeDecision.clarifyQuestion ?? "조금만 더 알려주면 내가 더 정확하게 같이 볼 수 있어! 뭐가 제일 궁금한지 한 문장으로 말해줄래? ✨",
+        finalText: routeDecision.clarifyQuestion ?? "정확한 답변을 위해 궁금한 내용을 한 문장으로 조금만 더 구체적으로 알려주세요.",
         finalNextAction: "ASK_CLARIFY",
         doneOk: true
       };
@@ -289,7 +296,7 @@ function buildGraph(deps: ChatGraphDeps) {
       guardAbort();
       const routeDecision = assertRouteDecision(state.routeDecision);
       return {
-        finalText: `그건 내가 대신 해주면 너한테 진짜 도움이 안 돼서 같이 못 해 🥺 대신 방향 잡기나 구조 짜기는 같이 해줄게! (${routeDecision.refuseReason ?? "정책상 거절"})`,
+        finalText: `요청하신 내용은 직접 수행해드릴 수 없습니다. 대신 방향 설정이나 구조 정리는 도와드릴 수 있습니다. (${routeDecision.refuseReason ?? "정책상 거절"})`,
         finalNextAction: "REFUSE",
         doneOk: true
       };
@@ -299,7 +306,7 @@ function buildGraph(deps: ChatGraphDeps) {
       const routeDecision = assertRouteDecision(state.routeDecision);
       if (state.toolLoopCount >= 2) {
         return {
-          finalText: "자료 찾는 과정에서 자꾸 막혀서, 이번엔 질문 범위를 조금만 더 좁혀보자! 키워드 하나만 더 줄래? ✨",
+          finalText: "자료 조회가 반복적으로 실패했습니다. 키워드나 질문 범위를 조금 더 좁혀서 다시 요청해 주세요.",
           finalNextAction: "ASK_CLARIFY",
           doneOk: true,
           shouldRetry: false
@@ -316,7 +323,7 @@ function buildGraph(deps: ChatGraphDeps) {
       if (!state.pendingTool) {
         return {
           doneOk: true,
-          finalText: "이번 턴에서는 바로 돌릴 도구가 안 보여. 내가 도우려면 질문을 조금만 더 구체적으로 말해줘! 😆",
+          finalText: "현재 요청에서 바로 실행할 도구를 결정하기 어렵습니다. 질문을 조금 더 구체적으로 알려주세요.",
           finalNextAction: "ASK_CLARIFY",
           shouldRetry: false
         };
@@ -374,7 +381,7 @@ function buildGraph(deps: ChatGraphDeps) {
           if (state.needsSources && state.forceSourceMode === "FORCED" && sources.length === 0) {
             return {
               toolExecutions: [...state.toolExecutions, execution],
-              finalText: "지금 찾은 자료만으로는 출처가 좀 약해. 찾고 싶은 대상이나 조건을 한 단계만 더 좁혀보자! 🥺",
+              finalText: "현재 조회 결과만으로는 출처가 충분하지 않습니다. 찾고 싶은 대상이나 조건을 조금 더 구체화해 주세요.",
               finalNextAction: "ASK_CLARIFY",
               finalSources: [],
               doneOk: true,
@@ -383,15 +390,38 @@ function buildGraph(deps: ChatGraphDeps) {
             };
           }
 
+          let finalText: string;
+          if (rawItems.length > 0) {
+            try {
+              finalText = await deps.llmPort.generateSearchAnswer({
+                message: state.userMessage,
+                masterContext: state.masterContext,
+                history: state.history,
+                searchResults: rawItems,
+                ...(deps.abortSignal ? { abortSignal: deps.abortSignal } : {}),
+                onToken: (delta) => {
+                  if (!deps.isAborted()) {
+                    deps.emitToken({ turnId: state.turnId, delta });
+                  }
+                }
+              });
+            } catch (error) {
+              if (error instanceof Error && error.message.includes("MODEL_PROVIDER_ERROR")) {
+                finalText = `관련 자료를 확인했습니다. ${sources
+                  .map((item) => item.title)
+                  .slice(0, 3)
+                  .join(", ")}`;
+              } else {
+                throw error;
+              }
+            }
+          } else {
+            finalText = "관련 자료를 찾지 못했습니다. 키워드나 범위를 조금 더 구체적으로 알려주세요.";
+          }
+
           return {
             toolExecutions: [...state.toolExecutions, execution],
-            finalText:
-              sources.length > 0
-                ? `찾아보니까 이런 자료들이 먼저 보여! ${sources
-                    .map((item) => item.title)
-                    .slice(0, 3)
-                    .join(", ")}`
-                : "내가 바로 쓸 만한 자료를 아직 못 찾았어. 키워드나 범위를 조금만 더 구체화해줄래? ✨",
+            finalText,
             finalNextAction: "CALL_TOOL",
             finalSources: sources,
             doneOk: true,
@@ -516,8 +546,8 @@ function buildGraph(deps: ChatGraphDeps) {
           finalNextAction: fallbackAction,
           finalText:
             fallbackAction === "ASK_CLARIFY"
-              ? "도구 쪽에서 오류가 나서, 키워드나 범위를 조금만 더 다듬어서 다시 볼까? 😵"
-              : "도구 없이도 지금 줄 수 있는 현실적인 방향부터 같이 정리해볼게! ✨",
+              ? "도구 실행 중 오류가 발생했습니다. 키워드나 범위를 조금 더 구체화해 다시 요청해 주세요."
+              : "도구 호출 없이 답변 가능한 범위에서 안내드립니다.",
           doneOk: true,
           shouldRetry: false,
           toolLoopCount: state.toolLoopCount + 1

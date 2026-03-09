@@ -1,6 +1,7 @@
 import type { LlmPort, PlanNextActionInput } from "@/application/ports/llm";
 import type { RouteDecision } from "@/domain/models";
 import { clampMasterContext } from "@/application/utils/masterContext";
+import type { SearchResultItem } from "@/application/ports/search";
 
 function hasAny(message: string, keywords: string[]): boolean {
   return keywords.some((keyword) => message.includes(keyword));
@@ -23,6 +24,17 @@ function mergeCounselingMemo(masterContext: string, memo: string): string {
 }
 
 export class StubLlmAdapter implements LlmPort {
+  private emitChunks(text: string, onToken?: (delta: string) => void): void {
+    if (!onToken || text.length === 0) {
+      return;
+    }
+
+    const chunkSize = Math.max(1, Math.ceil(text.length / 3));
+    for (let index = 0; index < text.length; index += chunkSize) {
+      onToken(text.slice(index, index + chunkSize));
+    }
+  }
+
   async planNextAction(input: PlanNextActionInput): Promise<RouteDecision> {
     const message = input.message.trim();
 
@@ -30,7 +42,7 @@ export class StubLlmAdapter implements LlmPort {
       return {
         nextAction: "REFUSE",
         allowedTools: [],
-        refuseReason: "제출물 통째 작성이나 부정행위 쪽이라 그건 같이 못 해.",
+        refuseReason: "제출물 전체 작성이나 부정행위에 해당해 직접 도와드릴 수 없습니다.",
         confidence: 0.95,
         reason: "부정행위 요청"
       };
@@ -49,7 +61,7 @@ export class StubLlmAdapter implements LlmPort {
       return {
         nextAction: "ASK_CLARIFY",
         allowedTools: [],
-        clarifyQuestion: "좋아, 변환할 원문 텍스트를 먼저 보내줄래? 😆",
+        clarifyQuestion: "변환할 원문 텍스트를 먼저 보내주세요.",
         confidence: 0.82,
         reason: "변환 요청이지만 입력 원문 불충분"
       };
@@ -67,10 +79,37 @@ export class StubLlmAdapter implements LlmPort {
     message: string;
     masterContext: string;
     history: Array<{ role: string; content: string }>;
+    onToken?: (delta: string) => void;
+    abortSignal?: AbortSignal;
   }): Promise<string> {
-    const prefix = input.masterContext ? "좋아, 맥락까지 반영해서 보면 " : "내 생각엔 ";
+    const prefix = input.masterContext ? "세션 맥락을 반영하면 " : "답변드리면 ";
     const contextHint = input.masterContext ? `[맥락:${input.masterContext.slice(0, 16)}] ` : "";
-    return `${prefix}${contextHint}${input.message} 쪽으로 보면 돼 ✨`;
+    const text = `${prefix}${contextHint}${input.message} 쪽으로 보시면 됩니다.`;
+    this.emitChunks(text, input.onToken);
+    return text;
+  }
+
+  async generateSearchAnswer(input: {
+    message: string;
+    masterContext: string;
+    history: Array<{ role: string; content: string }>;
+    searchResults: SearchResultItem[];
+    onToken?: (delta: string) => void;
+    abortSignal?: AbortSignal;
+  }): Promise<string> {
+    const lines = input.searchResults
+      .slice(0, 3)
+      .map((item, index) => `${index + 1}. ${item.title}: ${item.bodyText.slice(0, 120)}`)
+      .join("\n");
+
+    const sources = input.searchResults
+      .slice(0, 3)
+      .map((item) => `- ${item.title} (${item.url})`)
+      .join("\n");
+
+    const text = [`검색 결과를 바탕으로 질문을 정리하면 다음과 같습니다.`, lines, "", `출처:`, sources].join("\n");
+    this.emitChunks(text, input.onToken);
+    return text;
   }
 
   async suggestMasterContextUpdate(input: {

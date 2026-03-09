@@ -62,6 +62,7 @@
     {
       "title": "문서 제목",
       "snippet": "요약",
+      "bodyText": "링크 본문에서 추출한 텍스트",
       "source": "official-doc",
       "url": "https://example.com/doc"
     }
@@ -84,7 +85,7 @@
 ```json
 {
   "resultText": "변환 결과",
-  "appliedRules": ["tone=formal", "length=short"]
+  "appliedRules": ["format=presentation_script", "tone=neutral"]
 }
 ```
 
@@ -106,13 +107,17 @@
   - `event: message`
   - `event: error`
   - `event: done`
+- 동작 메모:
+  - `event: token`은 실제 모델 생성 중 발생하는 delta를 순서대로 전송하는 것을 우선한다.
+  - 단, 모델 스트리밍이 발생하지 않은 경로에서는 최종 텍스트 전체가 단일 `event: token`으로 전송될 수 있다.
+  - `event: message.text`는 스트리밍으로 누적된 최종 전체 텍스트다.
 - 정상 예시:
 ```txt
 event: token
 data: {"turnId":"turn_01...","delta":"부분 텍스트"}
 
 event: message
-data: {"turnId":"turn_01...","text":"좋아, 이건 이렇게 보면 돼! 먼저 핵심부터 같이 정리해보자 ✨","nextAction":"DIRECT_ANSWER"}
+data: {"turnId":"turn_01...","text":"검색된 문서 본문을 바탕으로 핵심 개념과 차이점을 정리해드리겠습니다.\n\n출처:\n- 문서 제목 (https://example.com/doc)","nextAction":"CALL_TOOL","sources":[{"title":"문서 제목","url":"https://example.com/doc","source":"official-doc"}]}
 
 event: done
 data: {"turnId":"turn_01...","ok":true,"latencyMs":120}
