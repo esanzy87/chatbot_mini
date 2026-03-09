@@ -1,7 +1,7 @@
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { z } from "zod";
 import { createEntityId, createToolCallId } from "@/core/id/ids";
-import type { NextAction, RouteDecision, SourceItem } from "@/domain/models";
+import type { NextAction, RouteDecision, SearchQueryPlan, SourceItem } from "@/domain/models";
 import { decideForceSourceMode } from "@/domain/policies/sourceMode";
 import {
   applyConfidenceFallbackWithSourcePolicy,
@@ -49,6 +49,7 @@ const ChatState = Annotation.Root({
   masterContext: Annotation<string>(),
   history: Annotation<Array<{ role: string; content: string }>>(),
   routeDecision: Annotation<RouteDecision | null>(),
+  searchPlan: Annotation<SearchQueryPlan | null>(),
   forceSourceMode: Annotation<"FORCED" | "NOT_FORCED">(),
   pendingTool: Annotation<null | {
     toolName: "search" | "transform";
@@ -157,6 +158,11 @@ function chooseTool(routeDecision: RouteDecision, userMessage: string): State["p
       targetFormat: "summary"
     }
   };
+}
+
+function resolveSearchQueryFromPlan(searchPlan: SearchQueryPlan | null, userMessage: string): string {
+  const planned = searchPlan?.searchQueries?.[0]?.trim();
+  return planned && planned.length > 0 ? planned : userMessage;
 }
 
 const searchArgsSchema = z.object({
@@ -313,8 +319,31 @@ function buildGraph(deps: ChatGraphDeps) {
         };
       }
 
+      let searchPlan: SearchQueryPlan | null = null;
+      if (routeDecision.allowedTools.includes("search")) {
+        try {
+          searchPlan = await deps.llmPort.planSearchQuery({
+            message: state.userMessage,
+            masterContext: state.masterContext,
+            history: state.history
+          });
+        } catch {
+          searchPlan = null;
+        }
+      }
+
       return {
-        pendingTool: chooseTool(routeDecision, state.userMessage),
+        pendingTool:
+          routeDecision.allowedTools.includes("search")
+            ? {
+                toolName: "search",
+                args: {
+                  query: resolveSearchQueryFromPlan(searchPlan, state.userMessage),
+                  topK: 5
+                }
+              }
+            : chooseTool(routeDecision, state.userMessage),
+        searchPlan,
         shouldRetry: false
       };
     })
@@ -738,6 +767,7 @@ export async function runChatGraph(
     masterContext: "",
     history: [],
     routeDecision: null,
+    searchPlan: null,
     forceSourceMode: "NOT_FORCED",
     pendingTool: null,
     toolLoopCount: 0,

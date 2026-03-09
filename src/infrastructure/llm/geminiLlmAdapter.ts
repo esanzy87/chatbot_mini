@@ -1,11 +1,13 @@
 import type { LlmPort, PlanNextActionInput } from "@/application/ports/llm";
-import type { RouteDecision } from "@/domain/models";
+import type { RouteDecision, SearchQueryPlan } from "@/domain/models";
 import { validateRouteDecision } from "@/domain/policies/routeDecision";
 import {
   buildChatSystemPrompt,
   buildChatUserPrompt,
   buildMemoryUpdateSystemPrompt,
   buildMemoryUpdateUserPrompt,
+  buildSearchPlannerSystemPrompt,
+  buildSearchPlannerUserPrompt,
   buildSearchAnswerSystemPrompt,
   buildSearchAnswerUserPrompt,
   buildRouterSystemPrompt,
@@ -135,6 +137,17 @@ function fallbackAskClarify(reason: string): RouteDecision {
   };
 }
 
+function fallbackSearchPlan(message: string, reason: string): SearchQueryPlan {
+  return {
+    searchIntent: "기본 검색 fallback",
+    searchQueries: [message.trim()],
+    mustInclude: [],
+    mustExclude: [],
+    answerShape: "definition",
+    reason
+  };
+}
+
 export class GeminiLlmAdapter implements LlmPort {
   constructor(
     private readonly apiKey: string,
@@ -186,6 +199,79 @@ export class GeminiLlmAdapter implements LlmPort {
       return validateRouteDecision(parsed);
     } catch {
       return fallbackAskClarify("라우터 출력 파싱 실패");
+    }
+  }
+
+  async planSearchQuery(input: {
+    message: string;
+    masterContext: string;
+    history: Array<{ role: string; content: string }>;
+  }): Promise<SearchQueryPlan> {
+    const systemPrompt = buildSearchPlannerSystemPrompt();
+    const userPrompt = buildSearchPlannerUserPrompt(input);
+
+    let response: Response;
+    try {
+      response = await fetchGemini(
+        `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }]
+          })
+        },
+        {
+          timeoutMs: GEMINI_REQUEST_TIMEOUT_MS
+        }
+      );
+    } catch {
+      return fallbackSearchPlan(input.message, "검색 플래너 호출 실패");
+    }
+
+    if (!response.ok) {
+      return fallbackSearchPlan(input.message, "검색 플래너 응답 실패");
+    }
+
+    const payload = (await response.json()) as {
+      candidates?: Array<{
+        content?: {
+          parts?: Array<{ text?: string }>;
+        };
+      }>;
+    };
+
+    try {
+      const jsonBlock = extractJsonBlock(extractText(payload));
+      const parsed = JSON.parse(jsonBlock) as Partial<SearchQueryPlan>;
+      const queries = Array.isArray(parsed.searchQueries)
+        ? parsed.searchQueries.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean)
+        : [];
+
+      if (queries.length === 0) {
+        return fallbackSearchPlan(input.message, "검색 플랜 쿼리 비어 있음");
+      }
+
+      return {
+        searchIntent: typeof parsed.searchIntent === "string" && parsed.searchIntent.trim() ? parsed.searchIntent.trim() : "검색 의도 확인",
+        searchQueries: queries,
+        mustInclude: Array.isArray(parsed.mustInclude)
+          ? parsed.mustInclude.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean)
+          : [],
+        mustExclude: Array.isArray(parsed.mustExclude)
+          ? parsed.mustExclude.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean)
+          : [],
+        answerShape:
+          parsed.answerShape === "comparison" ||
+          parsed.answerShape === "latest" ||
+          parsed.answerShape === "process" ||
+          parsed.answerShape === "recommendation"
+            ? parsed.answerShape
+            : "definition",
+        reason: typeof parsed.reason === "string" && parsed.reason.trim() ? parsed.reason.trim() : "검색어 재작성"
+      };
+    } catch {
+      return fallbackSearchPlan(input.message, "검색 플래너 파싱 실패");
     }
   }
 

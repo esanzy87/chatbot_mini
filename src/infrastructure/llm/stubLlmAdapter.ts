@@ -1,5 +1,5 @@
 import type { LlmPort, PlanNextActionInput } from "@/application/ports/llm";
-import type { RouteDecision } from "@/domain/models";
+import type { RouteDecision, SearchQueryPlan } from "@/domain/models";
 import { clampMasterContext } from "@/application/utils/masterContext";
 import type { SearchResultItem } from "@/application/ports/search";
 
@@ -75,6 +75,24 @@ export class StubLlmAdapter implements LlmPort {
     };
   }
 
+  async planSearchQuery(input: {
+    message: string;
+    masterContext: string;
+    history: Array<{ role: string; content: string }>;
+  }): Promise<SearchQueryPlan> {
+    const normalized = input.message.trim().replace(/\s+/g, " ");
+    const looksLatest = hasAny(normalized, ["최신", "통계", "최근", "출처", "공식"]);
+
+    return {
+      searchIntent: looksLatest ? "최신 정보와 공식 근거 확인" : "질문 관련 핵심 정보 확인",
+      searchQueries: [looksLatest ? `${normalized} 공식 출처` : `${normalized} 핵심 정보`, normalized],
+      mustInclude: [],
+      mustExclude: [],
+      answerShape: looksLatest ? "latest" : "definition",
+      reason: "검색어를 검색 친화적으로 재작성함"
+    };
+  }
+
   async generateDirectAnswer(input: {
     message: string;
     masterContext: string;
@@ -107,7 +125,13 @@ export class StubLlmAdapter implements LlmPort {
       .map((item) => `- ${item.title} (${item.url})`)
       .join("\n");
 
-    const text = [`검색 결과를 바탕으로 질문을 정리하면 다음과 같습니다.`, lines, "", `출처:`, sources].join("\n");
+    const text = [
+      `${input.message.replace(/\?+$/g, "")}에 대해 먼저 간단히 말씀드리면, 관련 자료를 보면 핵심 방향이 드러납니다.`,
+      lines,
+      "",
+      "출처:",
+      sources
+    ].join("\n");
     this.emitChunks(text, input.onToken);
     return text;
   }

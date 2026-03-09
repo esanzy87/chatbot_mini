@@ -97,6 +97,20 @@ describe("StubLlmAdapter", () => {
 
     expect(answer).toContain("출처:");
     expect(answer).toContain("문서 1");
+    expect(answer).toContain("에 대해 먼저 간단히 말씀드리면");
+  });
+
+  it("creates rewritten search plan for search queries", async () => {
+    const adapter = new StubLlmAdapter();
+    const plan = await adapter.planSearchQuery({
+      message: "버클리 생명과학 전공 관련 최신 통계랑 공식 출처 찾아줘",
+      masterContext: "유학 진로 상담",
+      history: []
+    });
+
+    expect(plan.searchQueries.length).toBeGreaterThan(0);
+    expect(plan.searchQueries[0]).not.toBe("버클리 생명과학 전공 관련 최신 통계랑 공식 출처 찾아줘");
+    expect(plan.answerShape).toBe("latest");
   });
 });
 
@@ -152,6 +166,24 @@ describe("GeminiLlmAdapter", () => {
     });
 
     expect(updated).toContain("[상담 메모]");
+  });
+
+  it("falls back to original query when search planner JSON parsing fails", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: "not-json" }] } }]
+      })
+    });
+
+    const adapter = new GeminiLlmAdapter("key");
+    const plan = await adapter.planSearchQuery({
+      message: "최신 통계 알려줘",
+      masterContext: "context",
+      history: []
+    });
+
+    expect(plan.searchQueries[0]).toBe("최신 통계 알려줘");
   });
 });
 

@@ -47,3 +47,12 @@ export type SourceItem = {
   url: string;
   source: string;
 };
+
+export type SearchQueryPlan = {
+  searchIntent: string;
+  searchQueries: string[];
+  mustInclude: string[];
+  mustExclude: string[];
+  answerShape: "definition" | "comparison" | "latest" | "process" | "recommendation";
+  reason: string;
+};

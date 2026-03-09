@@ -20,6 +20,12 @@ type SearchAnswerPromptInput = {
   }>;
 };
 
+type SearchPlannerPromptInput = {
+  message: string;
+  masterContext: string;
+  history: Array<{ role: string; content: string }>;
+};
+
 type MemoryPromptInput = {
   masterContext: string;
   history: Array<{ role: string; content: string }>;
@@ -135,15 +141,16 @@ export function buildChatUserPrompt(input: ChatPromptInput): string {
 export function buildSearchAnswerSystemPrompt(): string {
   return [
     "너는 일반적인 AI 어시스턴트다.",
-    "검색 도구가 수집한 여러 문서의 본문을 바탕으로 교육적으로 정리된 한국어 답변을 작성해라.",
+    "검색 도구가 수집한 여러 문서의 본문을 바탕으로 사용자 질문에 직접 답하는 한국어 답변을 작성해라.",
     "",
     "[응답 원칙]",
-    "- 사용자의 질문에 직접 답한다.",
+    "- 첫 문단 1~2문장 안에서 사용자의 질문에 직접 답한다.",
     "- 단순 링크 나열로 끝내지 말고, 문서 본문을 읽고 핵심 개념, 차이점, 단계, 주의사항을 구조적으로 설명한다.",
     "- 문서 간 공통점과 차이점이 보이면 정리해서 제시한다.",
     "- 불확실하거나 문서마다 상충하는 내용은 단정하지 말고 조건을 밝혀라.",
     "- 답변 끝에는 반드시 '출처:'로 시작하는 출처 목록을 붙인다.",
     "- 출처 목록은 각 항목에 제목과 URL을 함께 쓴다.",
+    "- '검색해보니', '자료를 정리하면' 같은 메타 문구로 시작하지 마라.",
     "- 답변은 한국어 존댓말로 작성한다."
   ].join("\n");
 }
@@ -178,7 +185,38 @@ export function buildSearchAnswerUserPrompt(input: SearchAnswerPromptInput): str
     "[검색으로 수집한 문서 본문]",
     formattedResults,
     "",
-    "위 본문 내용을 바탕으로 교육적으로 정리된 답변을 작성하고, 마지막에 출처 목록을 포함해라."
+    "위 본문 내용을 바탕으로 먼저 질문에 직접 답하고, 이어서 핵심 근거를 정리한 뒤 마지막에 출처 목록을 포함해라."
+  ].join("\n");
+}
+
+export function buildSearchPlannerSystemPrompt(): string {
+  return [
+    "너는 검색 도구 실행 직전의 검색 플래너다.",
+    "사용자 질문을 그대로 반복하지 말고 검색 엔진 친화적인 쿼리로 재작성해라.",
+    "반드시 아래 JSON 하나만 출력해라.",
+    '{"searchIntent":string,"searchQueries":string[],"mustInclude":string[],"mustExclude":string[],"answerShape":"definition|comparison|latest|process|recommendation","reason":string}',
+    "",
+    "[규칙]",
+    "- searchQueries는 2~4개를 목표로 하되 가장 좋은 쿼리를 첫 번째에 둬라.",
+    "- 최신/통계/출처 요청은 공식성이나 시점 힌트를 반영해라.",
+    "- 비교 요청은 비교 대상 핵심 명사를 유지해라.",
+    "- 최종 답변을 쓰지 말고 검색 계획만 작성해라.",
+    "- reason은 한국어 한 문장으로 짧게 작성해라."
+  ].join("\n");
+}
+
+export function buildSearchPlannerUserPrompt(input: SearchPlannerPromptInput): string {
+  return [
+    "[세션 컨텍스트]",
+    input.masterContext,
+    "",
+    "[최근 대화]",
+    formatHistory(input.history, 6),
+    "",
+    "[이번 사용자 메시지]",
+    input.message,
+    "",
+    "위 정보를 바탕으로 검색 계획 JSON을 작성해라."
   ].join("\n");
 }
 

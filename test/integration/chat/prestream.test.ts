@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getContainer, resetContainerForTest } from "@/composition/container";
 import { POST as createSession } from "@/app/api/sessions/route";
 import { POST as chatRoute } from "@/app/api/chat/route";
@@ -281,6 +281,80 @@ describe("POST /api/chat pre-stream validations", () => {
     const payload = (messageEvent?.data ?? {}) as { sources?: unknown[] };
 
     expect(payload.sources).toBeUndefined();
+  });
+
+  it("uses rewritten search query when planner returns a valid query", async () => {
+    const sessionId = await createTestSession();
+    const container = getContainer();
+    const originalPlanner = container.llmPort.planSearchQuery.bind(container.llmPort);
+    const searchSpy = vi.spyOn(container.searchPort, "search");
+
+    container.llmPort.planSearchQuery = async () => ({
+      searchIntent: "공식 최신 통계 확인",
+      searchQueries: ["site:example.com rewritten latest stats"],
+      mustInclude: [],
+      mustExclude: [],
+      answerShape: "latest",
+      reason: "재작성 검색어 사용"
+    });
+
+    try {
+      const req = new Request("http://localhost/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          message: "최신 통계 알려줘"
+        })
+      });
+
+      await (await chatRoute(req)).text();
+
+      expect(searchSpy).toHaveBeenCalled();
+      expect(searchSpy.mock.calls[0]?.[0]).toMatchObject({
+        query: "site:example.com rewritten latest stats"
+      });
+    } finally {
+      container.llmPort.planSearchQuery = originalPlanner;
+      searchSpy.mockRestore();
+    }
+  });
+
+  it("falls back to original message query when planner returns an empty query list", async () => {
+    const sessionId = await createTestSession();
+    const container = getContainer();
+    const originalPlanner = container.llmPort.planSearchQuery.bind(container.llmPort);
+    const searchSpy = vi.spyOn(container.searchPort, "search");
+
+    container.llmPort.planSearchQuery = async () => ({
+      searchIntent: "검색 실패 fallback",
+      searchQueries: [],
+      mustInclude: [],
+      mustExclude: [],
+      answerShape: "latest",
+      reason: "빈 쿼리"
+    });
+
+    try {
+      const req = new Request("http://localhost/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          message: "관련 논문 찾아줘"
+        })
+      });
+
+      await (await chatRoute(req)).text();
+
+      expect(searchSpy).toHaveBeenCalled();
+      expect(searchSpy.mock.calls[0]?.[0]).toMatchObject({
+        query: "관련 논문 찾아줘"
+      });
+    } finally {
+      container.llmPort.planSearchQuery = originalPlanner;
+      searchSpy.mockRestore();
+    }
   });
 
   it("emits error + done(ok=false) on unrecoverable tool failure", async () => {
